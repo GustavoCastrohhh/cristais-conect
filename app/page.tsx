@@ -142,7 +142,7 @@ export default function Home() {
               className="resize-none"
             />
              <p className="text-xs text-muted-foreground">
-                Exemplo: Olá {{nome}}, você tem um cupom: {{variavel_1}}!
+                Exemplo: Olá {'{{nome}}'}, você tem um cupom: {'{{variavel_1}}'}!
             </p>
           </div>
 
