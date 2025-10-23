@@ -23,10 +23,12 @@ export default function LoginPage() {
     const { error } = await login(email, password); // Usa a nova função login
 
     if (error) {
+      console.error('Falha no Submit do Login:', error); // Log de erro detalhado no console
       toast.error('Falha no Login', {
         description: error.message || 'Email ou senha inválidos.',
       });
     } else {
+      console.log('Login bem-sucedido para:', email); // Log de sucesso
       // O redirecionamento pode ser tratado pelo AuthProvider ou aqui
       // Se o AuthProvider não redirecionar, descomente a linha abaixo
       router.push('/');
