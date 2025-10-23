@@ -23,7 +23,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsLoading(true);
     // Tenta pegar a sessão inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+         console.error('Erro ao buscar sessão inicial:', error.message); // Log de erro na busca inicial
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
@@ -31,7 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Ouve mudanças no estado de autenticação
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
+        console.log('Evento AuthStateChange:', event); // Log para acompanhar eventos
         setSession(session);
         setUser(session?.user ?? null);
         setIsLoading(false); // Para de carregar quando o estado muda
@@ -51,13 +55,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
     setIsLoading(false); // Para de carregar após a tentativa
+
+    if (error) {
+      console.error('Erro no login:', error.message); // Adiciona log de erro
+    }
     // O estado (user/session) será atualizado pelo onAuthStateChange
     return { error };
   };
 
   const logout = async () => {
     setIsLoading(true); // Começa a carregar no logout
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Erro no logout:', error.message); // Adiciona log de erro
+    }
     // O estado (user/session) será atualizado pelo onAuthStateChange
     // setIsLoading(false) será chamado no listener
   };
