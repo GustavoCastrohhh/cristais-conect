@@ -25,7 +25,7 @@ import { ptBR } from 'date-fns/locale';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { supabase } from '@/lib/supabaseClient';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAuth } from '@/contexts/AuthContext'; // 1. Importar useAuth
+import { useAuth } from '@/contexts/AuthContext';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -41,46 +41,48 @@ interface HistoricoDisparo {
 }
 
 export default function ReportsPage() {
-  const { user } = useAuth(); // 2. Obter o usuário do contexto
+  // Use user?.user_metadata?.phone para acessar o telefone
+  const { user, isLoading: isAuthLoading } = useAuth(); // Renomeie isLoading do useAuth para evitar conflito
   const [data, setData] = useState<HistoricoDisparo[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true); // Estado de loading específico para os dados
   const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
 
   useEffect(() => {
-    // Só busca os dados se o usuário estiver carregado e tiver um telefone
-    if (!user || !user.phone) {
-        // Se ainda estiver carregando o user, espera. Se carregou e não tem user/phone, limpa.
-        if (!isLoading) { // Evita limpar enquanto o AuthContext ainda pode estar carregando
-            console.warn('Usuário não autenticado ou sem telefone para buscar histórico.');
-            setData([]);
-            setStats({ total: 0, success: 0, failed: 0 });
-            setIsLoading(false);
-        }
-        return; // Sai do useEffect se não tiver usuário ou telefone
-    }
-
-    // Convertendo o telefone do usuário para número para a comparação
-    // IMPORTANTE: Certifique-se que user.phone está no mesmo formato numérico que phone_usuario
-    const userPhoneNumeric = parseInt(user.phone.replace(/\D/g, ''), 10); // Remove não-dígitos e converte
-     if (isNaN(userPhoneNumeric)) {
-        console.error('Número de telefone do usuário inválido:', user.phone);
-        setData([]);
-        setStats({ total: 0, success: 0, failed: 0 });
-        setIsLoading(false);
+    // Não faça nada se a autenticação ainda estiver carregando
+    if (isAuthLoading) {
         return;
     }
 
+    // Verifica se o usuário está autenticado e tem o telefone nos metadados
+    const userPhoneString = user?.user_metadata?.phone as string | undefined;
+
+    if (!user || !userPhoneString) {
+      console.warn('Usuário não autenticado ou sem telefone nos metadados para buscar histórico.');
+      setData([]);
+      setStats({ total: 0, success: 0, failed: 0 });
+      setIsLoadingData(false); // Garante que o loading de dados termine
+      return; // Sai do useEffect
+    }
+
+    // Convertendo o telefone do usuário para número para a comparação
+    const userPhoneNumeric = parseInt(userPhoneString.replace(/\D/g, ''), 10);
+    if (isNaN(userPhoneNumeric)) {
+      console.error('Número de telefone nos metadados do usuário inválido:', userPhoneString);
+      setData([]);
+      setStats({ total: 0, success: 0, failed: 0 });
+      setIsLoadingData(false); // Garante que o loading de dados termine
+      return;
+    }
 
     async function loadData() {
-      setIsLoading(true);
-      console.log(`Buscando dados do Supabase para o usuário com telefone: ${userPhoneNumeric}...`);
+      setIsLoadingData(true); // Inicia o loading *dos dados*
+      console.log(`Buscando dados do Supabase para o usuário com telefone (metadata): ${userPhoneNumeric}...`);
 
-      // 3. Modificar a query para filtrar por phone_usuario
       const { data: historicoData, error } = await supabase
         .from('historico_disparos')
         .select('*')
-        .eq('phone_usuario', userPhoneNumeric) // <<< ADICIONA O FILTRO AQUI
+        .eq('phone_usuario', userPhoneNumeric)
         .order('criado_em', { ascending: false });
 
       if (error) {
@@ -98,11 +100,13 @@ export default function ReportsPage() {
         setData([]);
       }
 
-      setIsLoading(false);
+      setIsLoadingData(false); // Finaliza o loading *dos dados*
     }
 
     loadData();
-  }, [user, isLoading]); // Adiciona user e isLoading como dependências do useEffect
+    // A dependência agora é apenas 'user' e 'isAuthLoading'.
+    // A busca será reativada se o usuário mudar ou quando a autenticação terminar de carregar.
+  }, [user, isAuthLoading]);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -132,14 +136,19 @@ export default function ReportsPage() {
     }
   };
 
+  // Usa isLoadingData para os Skeletons e a mensagem de carregando
+  const showLoadingState = isLoadingData || isAuthLoading;
+
+
   return (
     <ProtectedRoute>
       <AppLayout>
         <div className="space-y-6">
           <h1 className="text-3xl font-bold">Relatório de Envios</h1>
 
-          {/* Cards de Estatísticas (sem alterações) */}
+          {/* Cards de Estatísticas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* ... Cards ... Usam showLoadingState */}
              <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -147,7 +156,7 @@ export default function ReportsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold">{stats.total}</div>}
+                {showLoadingState ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold">{stats.total}</div>}
               </CardContent>
             </Card>
             <Card>
@@ -157,7 +166,7 @@ export default function ReportsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-               {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-green-600">{stats.success}</div>}
+               {showLoadingState ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-green-600">{stats.success}</div>}
               </CardContent>
             </Card>
             <Card>
@@ -167,35 +176,38 @@ export default function ReportsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-red-600">{stats.failed}</div>}
+                {showLoadingState ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-red-600">{stats.failed}</div>}
               </CardContent>
             </Card>
           </div>
 
+          {/* Tabela de Histórico */}
           <Card>
             <CardHeader>
               <CardTitle>Histórico de Envios</CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                 <div className="space-y-2">
+              {showLoadingState ? ( // Usa showLoadingState
+                <div className="space-y-2">
                     <Skeleton className="h-10 w-full" />
                     <Skeleton className="h-10 w-full" />
                     <Skeleton className="h-10 w-full" />
                 </div>
-              ) : data.length === 0 ? (
-                 <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado para este usuário.</div>
-              ) :(
+                // Verifica se terminou de carregar e não tem dados nem usuário/telefone válidos
+              ) : data.length === 0 && (!user || !user.user_metadata?.phone || isNaN(parseInt(String(user.user_metadata.phone).replace(/\D/g,'')))) ? (
+                <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado ou usuário sem telefone válido configurado.</div>
+              ) : data.length === 0 ? ( // Terminou de carregar, tem usuário/telefone, mas não achou dados
+                <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado para este usuário.</div>
+              ) : ( // Terminou de carregar e tem dados
                 <>
                   <Table>
-                    <TableHeader>
+                    {/* ... TableHeader e TableBody como antes ... */}
+                      <TableHeader>
                       <TableRow>
-                        {/* 4. Remover cabeçalho "Usuário" */}
                         <TableHead>Cliente</TableHead>
                         <TableHead>Telefone Cliente</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Data Envio</TableHead>
-                        {/* <TableHead>Mensagem</TableHead> */}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -205,18 +217,16 @@ export default function ReportsPage() {
                           <TableCell>{row.phone_cliente || '-'}</TableCell>
                           <TableCell>{getStatusBadge(row.status)}</TableCell>
                           <TableCell>{formatarData(row.criado_em)}</TableCell>
-                          {/* 5. Remover célula de nome_usuario */}
-                          {/* <TableCell>{row.nome_usuario || '-'}</TableCell> */}
-                          {/* <TableCell className="max-w-xs truncate">{row.mensagem || '-'}</TableCell> */}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
 
-                  {/* Paginação (sem alterações) */}
+                  {/* Paginação */}
                   {totalPages > 1 && (
-                    <div className="mt-4">
-                      <Pagination>
+                     <div className="mt-4">
+                      {/* ... Paginação como antes ... */}
+                       <Pagination>
                         <PaginationContent>
                           <PaginationItem>
                             <PaginationPrevious
