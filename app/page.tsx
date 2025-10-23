@@ -61,9 +61,10 @@ export default function Home() {
         }
 
         let data: ContactData[] = [];
-        const fileName = file.name.toLowerCase();
+        // Define fileName *dentro* do onload para garantir que 'file' está disponível
+        const fileNameInsideOnload = file.name.toLowerCase();
 
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        if (fileNameInsideOnload.endsWith('.xlsx') || fileNameInsideOnload.endsWith('.xls')) {
           // Ler arquivos Excel (xlsx, xls)
           const workbook = XLSX.read(fileContent, { type: 'array' });
           const sheetName = workbook.SheetNames[0]; // Pega a primeira planilha
@@ -107,7 +108,7 @@ export default function Home() {
               toast.success('Planilha lida', { description: `${data.length} contatos encontrados.` });
           }
 
-        } else if (fileName.endsWith('.csv')) {
+        } else if (fileNameInsideOnload.endsWith('.csv')) {
           // Ler arquivos CSV
           const csvContent = event.target?.result as string; // Lê como texto para papaparse
            Papa.parse<any>(csvContent, { // Use <any> ou defina um tipo mais estrito se souber as colunas
@@ -161,7 +162,10 @@ export default function Home() {
         setParsedData([]);
       } finally {
         // Garante que o loading termine para XLSX e XLS ou em caso de erro inicial
-        if (!file.name.toLowerCase().endsWith('.csv')) {
+        // Verifica se 'file' existe antes de acessar 'name'
+        if (file && !file.name.toLowerCase().endsWith('.csv')) {
+             setIsReadingFile(false);
+        } else if (!file && !fileName.endsWith('.csv')) { // Adicionado um fallback caso file seja null inesperadamente
              setIsReadingFile(false);
         }
       }
@@ -175,7 +179,10 @@ export default function Home() {
         setIsReadingFile(false);
     };
 
-    // Decide como ler o arquivo baseado na extensão
+    // Define a variável fileName *antes* de usá-la no if/else if
+    const fileName = file.name.toLowerCase(); // Corrigido: definindo fileName aqui
+
+    // Decide como ler o arquivo baseado na extensão (agora usando a variável definida)
     if (fileName.endsWith('.csv')) {
         reader.readAsText(file); // PapaParse precisa de texto
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
@@ -183,9 +190,10 @@ export default function Home() {
     } else {
         toast.error('Erro', { description: 'Formato de arquivo inválido (.xlsx, .xls ou .csv).' });
         setSelectedFile(null);
+        setParsedData([]); // Limpa dados se o formato for inválido
         setIsReadingFile(false);
     }
-  };
+  }; // Fim da função handleFileRead
 
   const handleConfirmClick = () => {
     // Verifica se há dados lidos e mensagem
@@ -206,16 +214,6 @@ export default function Home() {
     // LOG: Mostra os dados que seriam usados
     console.log("Iniciando campanha com os seguintes dados:", parsedData);
     console.log("Mensagem:", message);
-
-    // AQUI você adicionaria a lógica real de envio,
-    // iterando sobre `parsedData` e substituindo as variáveis na `message`
-    // Exemplo:
-    // for (const contact of parsedData) {
-    //   let finalMessage = message.replace('{{nome}}', contact.nome || '');
-    //   finalMessage = finalMessage.replace('{{variavel_1}}', contact.variavel_1 || '');
-    //   // Chamar API de envio com contact.telefone e finalMessage
-    //   await sendToApi(contact.telefone, finalMessage);
-    // }
 
     // Simulação de envio (manter por enquanto)
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -239,11 +237,8 @@ export default function Home() {
 
           <div className="space-y-2">
             <Label>Planilha de Contatos (.xlsx, .xls, .csv)</Label>
-            {/* Passa handleFileRead para onFileSelect */}
             <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
-            {/* Mostra indicador de leitura */}
             {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
-            {/* Mostra contagem após leitura */}
             {parsedData.length > 0 && !isReadingFile && (
                 <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
             )}
@@ -254,7 +249,7 @@ export default function Home() {
 
           <div className="space-y-2">
             <Label htmlFor="message">Mensagem</Label>
-            <div className="flex gap-2 mb-2 flex-wrap"> {/* Adicionado flex-wrap */}
+            <div className="flex gap-2 mb-2 flex-wrap">
               <Button
                 type="button"
                 variant="outline"
@@ -271,7 +266,6 @@ export default function Home() {
               >
                 Inserir {'{{variavel_1}}'}
               </Button>
-              {/* Adicione botões para outras variáveis se houver */}
             </div>
             <Textarea
               id="message"
@@ -290,12 +284,11 @@ export default function Home() {
             onClick={handleConfirmClick}
             size="lg"
             className="w-full"
-            disabled={isReadingFile || isLoading} // Desabilita enquanto lê ou envia
+            disabled={isReadingFile || isLoading}
           >
             {isLoading ? 'Enviando Campanha...' : 'Disparar Campanha'}
           </Button>
 
-          {/* AlertDialog (sem alterações significativas) */}
           <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>
