@@ -1,18 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // output: 'export', // Removido anteriormente
   eslint: {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
-  async redirects() {
-    return [
-      {
-        source: '/', // Rota de origem (a raiz do site)
-        destination: '/login', // Rota de destino (a página de login)
-        permanent: true, // Define se o redirecionamento é permanente (melhor para SEO)
-      },
-    ]
-  },
+  // Remova ou comente a função redirects inteira:
+  // async redirects() {
+  //   return [
+  //     {
+  //       source: '/',
+  //       destination: '/login',
+  //       permanent: true, // Ou false, dependendo da intenção original
+  //     },
+  //   ]
+  // },
 };
 
 module.exports = nextConfig;
