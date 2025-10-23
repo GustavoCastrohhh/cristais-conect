@@ -15,29 +15,65 @@ import {
 import {
   Pagination,
   PaginationContent,
-  // PaginationEllipsis, // Não utilizado no código atual
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
-import { getReportData, type ReportData } from '@/lib/mockData';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute'; // Importe o componente
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { supabase } from '@/lib/supabaseClient';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const ITEMS_PER_PAGE = 10;
 
+// Interface atualizada para corresponder à tabela "historico_disparos"
+interface HistoricoDisparo {
+  id: string | number; // Supabase gera ID, pode ser número ou string dependendo da configuração
+  criado_em: string; // Timestamp string ISO 8601
+  nome_cliente: string | null;
+  phone_cliente: number | null; // Alterado para number (numeric)
+  mensagem: string | null;
+  status: boolean | null; // Alterado para boolean
+  nome_usuario: string | null;
+  phone_usuario: number | null; // Alterado para number (numeric)
+}
+
 export default function ReportsPage() {
-  const [data, setData] = useState<ReportData[]>([]);
+  const [data, setData] = useState<HistoricoDisparo[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
 
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const reportData = await getReportData();
-      setData(reportData);
+      console.log('Buscando dados do Supabase (historico_disparos)...');
+
+      // Buscar dados da tabela 'historico_disparos' ordenados por 'criado_em'
+      const { data: historicoData, error } = await supabase
+        .from('historico_disparos')
+        .select('*')
+        .order('criado_em', { ascending: false }); // Ordenar pela data de criação
+
+      if (error) {
+        console.error('Erro ao buscar dados do Supabase:', error.message);
+        setData([]);
+      } else if (historicoData) {
+        console.log('Dados recebidos:', historicoData);
+        setData(historicoData);
+
+        // Calcular estatísticas com base no status boolean
+        const total = historicoData.length;
+        const success = historicoData.filter(item => item.status === true).length;
+        // Considera falha se status for false (ignora null ou outros casos por enquanto)
+        const failed = historicoData.filter(item => item.status === false).length;
+        setStats({ total, success, failed });
+      } else {
+        setData([]);
+      }
+
       setIsLoading(false);
     }
     loadData();
@@ -48,137 +84,157 @@ export default function ReportsPage() {
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const currentData = data.slice(startIndex, endIndex);
 
-  // ... (resto do seu código, stats, getStatusBadge) ...
-   const stats = {
-    total: 1500,
-    success: 1450,
-    failed: 50,
-  };
-
-  const getStatusBadge = (status: ReportData['status']) => {
-    switch (status) {
-      case 'Enviado':
-        return <Badge className="bg-green-600 hover:bg-green-700">Enviado</Badge>;
-      case 'Falha':
-        return <Badge variant="destructive">Falha</Badge>;
-      case 'Pendente':
-        return <Badge variant="secondary" className="bg-yellow-600 hover:bg-yellow-700">Pendente</Badge>;
+  // Ajuste a função getStatusBadge para lidar com o status boolean
+  const getStatusBadge = (status: boolean | null) => {
+    if (status === true) {
+      return <Badge className="bg-green-600 hover:bg-green-700">Enviado</Badge>;
+    } else if (status === false) {
+      return <Badge variant="destructive">Falha</Badge>;
+    } else {
+      // Caso seja null ou outro valor inesperado
+      return <Badge variant="outline">Pendente/Desconhecido</Badge>;
     }
   };
 
+  // Função para formatar a data 'criado_em'
+  const formatarData = (dataIso: string | null) => {
+    if (!dataIso) return '-';
+    try {
+      const dataObj = parseISO(dataIso);
+      return format(dataObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+    } catch (e) {
+      console.error('Erro ao formatar data:', dataIso, e);
+      return 'Data inválida';
+    }
+  };
 
   return (
-    <ProtectedRoute> {/* Envolva o conteúdo com ProtectedRoute */}
+    <ProtectedRoute>
       <AppLayout>
         <div className="space-y-6">
           <h1 className="text-3xl font-bold">Relatório de Envios</h1>
 
+          {/* Cards de Estatísticas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ... Cards de estatísticas ... */}
              <Card>
-                <CardHeader className="pb-3">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Enviado
+                  Total Registros
                 </CardTitle>
-                </CardHeader>
-                <CardContent>
-                <div className="text-3xl font-bold">{stats.total}</div>
-                </CardContent>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold">{stats.total}</div>}
+              </CardContent>
             </Card>
-
             <Card>
-                <CardHeader className="pb-3">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Sucessos
+                  Sucessos
                 </CardTitle>
-                </CardHeader>
-                <CardContent>
-                <div className="text-3xl font-bold text-green-600">{stats.success}</div>
-                </CardContent>
+              </CardHeader>
+              <CardContent>
+               {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-green-600">{stats.success}</div>}
+              </CardContent>
             </Card>
-
             <Card>
-                <CardHeader className="pb-3">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Falhas
+                  Falhas
                 </CardTitle>
-                </CardHeader>
-                <CardContent>
-                <div className="text-3xl font-bold text-red-600">{stats.failed}</div>
-                </CardContent>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? <Skeleton className="h-8 w-1/2" /> : <div className="text-3xl font-bold text-red-600">{stats.failed}</div>}
+              </CardContent>
             </Card>
           </div>
 
+          {/* Tabela de Histórico */}
           <Card>
             <CardHeader>
               <CardTitle>Histórico de Envios</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Carregando...</div>
-              ) : (
+                <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                </div>
+              ) : data.length === 0 ? (
+                 <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado.</div>
+              ) :(
                 <>
                   <Table>
-                    {/* ... Tabela ... */}
                     <TableHeader>
-                        <TableRow>
-                        <TableHead>Contato</TableHead>
-                        <TableHead>Telefone</TableHead>
+                      <TableRow>
+                        {/* Cabeçalhos atualizados */}
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Telefone Cliente</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Data Envio</TableHead>
-                        </TableRow>
+                        <TableHead>Usuário</TableHead>
+                         {/* <TableHead>Mensagem</TableHead> Opcional */}
+                      </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {currentData.map((row) => (
+                      {currentData.map((row) => (
                         <TableRow key={row.id}>
-                            <TableCell className="font-medium">{row.contato}</TableCell>
-                            <TableCell>{row.telefone}</TableCell>
-                            <TableCell>{getStatusBadge(row.status)}</TableCell>
-                            <TableCell>
-                            {format(row.dataEnvio, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                            </TableCell>
+                          {/* Campos atualizados */}
+                          <TableCell className="font-medium">{row.nome_cliente || '-'}</TableCell>
+                          <TableCell>{row.phone_cliente || '-'}</TableCell>
+                          <TableCell>{getStatusBadge(row.status)}</TableCell>
+                          <TableCell>{formatarData(row.criado_em)}</TableCell>
+                          <TableCell>{row.nome_usuario || '-'}</TableCell>
+                          {/* <TableCell className="max-w-xs truncate">{row.mensagem || '-'}</TableCell> Opcional */}
                         </TableRow>
-                        ))}
+                      ))}
                     </TableBody>
                   </Table>
 
+                  {/* Paginação */}
                   {totalPages > 1 && (
-                    <div className="mt-4">
+                     <div className="mt-4">
                       <Pagination>
-                        {/* ... Paginação ... */}
                         <PaginationContent>
-                            <PaginationItem>
+                          <PaginationItem>
                             <PaginationPrevious
-                                href="#"
-                                onClick={(e) => {
+                              href="#"
+                              onClick={(e) => {
                                 e.preventDefault();
                                 if (currentPage > 1) setCurrentPage(currentPage - 1);
-                                }}
+                              }}
+                              aria-disabled={currentPage <= 1}
+                              tabIndex={currentPage <= 1 ? -1 : undefined}
+                              className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
                             />
-                            </PaginationItem>
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          </PaginationItem>
+                          {/* Idealmente, adicionar lógica para mostrar apenas algumas páginas se houver muitas */}
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                             <PaginationItem key={page}>
-                                <PaginationLink
+                              <PaginationLink
                                 href="#"
                                 onClick={(e) => {
-                                    e.preventDefault();
-                                    setCurrentPage(page);
+                                  e.preventDefault();
+                                  setCurrentPage(page);
                                 }}
                                 isActive={currentPage === page}
-                                >
+                              >
                                 {page}
-                                </PaginationLink>
+                              </PaginationLink>
                             </PaginationItem>
-                            ))}
-                            <PaginationItem>
+                          ))}
+                          <PaginationItem>
                             <PaginationNext
-                                href="#"
-                                onClick={(e) => {
+                              href="#"
+                              onClick={(e) => {
                                 e.preventDefault();
                                 if (currentPage < totalPages) setCurrentPage(currentPage + 1);
-                                }}
+                              }}
+                              aria-disabled={currentPage >= totalPages}
+                              tabIndex={currentPage >= totalPages ? -1 : undefined}
+                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
                             />
-                            </PaginationItem>
+                          </PaginationItem>
                         </PaginationContent>
                       </Pagination>
                     </div>
