@@ -10,26 +10,28 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState(''); // Alterado para email
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Renomeado isLoading para evitar conflito
   const { login } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsSubmitting(true);
 
-    try {
-      await login(username, password);
-      router.push('/');
-    } catch (error) {
+    const { error } = await login(email, password); // Usa a nova função login
+
+    if (error) {
       toast.error('Falha no Login', {
-        description: 'Usuário ou senha inválidos.',
+        description: error.message || 'Email ou senha inválidos.',
       });
-    } finally {
-      setIsLoading(false);
+    } else {
+      // O redirecionamento pode ser tratado pelo AuthProvider ou aqui
+      // Se o AuthProvider não redirecionar, descomente a linha abaixo
+      router.push('/');
     }
+    setIsSubmitting(false);
   };
 
   return (
@@ -42,13 +44,14 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Nome de Usuário</Label>
+              <Label htmlFor="email">Email</Label> {/* Alterado para email */}
               <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email" // Alterado para email
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
             <div className="space-y-2">
@@ -59,10 +62,11 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Entrando...' : 'Entrar'}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Entrando...' : 'Entrar'}
             </Button>
           </form>
         </CardContent>
