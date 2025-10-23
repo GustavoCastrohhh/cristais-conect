@@ -24,7 +24,7 @@ export function Header() {
           <Image
             src="https://udblxrmkivxksgflmkni.supabase.co/storage/v1/object/public/logos/logo_cg_escrita_abaixo.png"
             alt="Logo"
-            width={120}
+            width={80}
             height={40}
             className="object-contain"
             priority
