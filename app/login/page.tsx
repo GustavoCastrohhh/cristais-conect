@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image'; // Importe o Image
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,9 +11,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(''); // Alterado para email
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false); // Renomeado isLoading para evitar conflito
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
 
@@ -20,36 +21,49 @@ export default function LoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { error } = await login(email, password); // Usa a nova função login
+    const { error } = await login(email, password);
 
     if (error) {
-      console.error('Falha no Submit do Login:', error); // Log de erro detalhado no console
+      console.error('Falha no Submit do Login:', error);
       toast.error('Falha no Login', {
         description: error.message || 'Email ou senha inválidos.',
       });
     } else {
-      console.log('Login bem-sucedido para:', email); // Log de sucesso
-      // O redirecionamento pode ser tratado pelo AuthProvider ou aqui
-      // Se o AuthProvider não redirecionar, descomente a linha abaixo
+      console.log('Login bem-sucedido para:', email);
       router.push('/');
     }
     setIsSubmitting(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    // Ajuste o container para centralizar verticalmente e adicionar padding
+    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      {/* Adicione a Logo aqui */}
+      <div className="mb-8"> {/* Adiciona margem inferior */}
+        <Image
+          src="https://udblxrmkivxksgflmkni.supabase.co/storage/v1/object/public/logos/logo_cg_escrita_abaixo.png" // Mesma URL da logo
+          alt="Logo Cristais de Gramado Conecta"
+          width={200} // Tamanho maior - Largura
+          height={66} // Tamanho maior - Altura (mantendo proporção aprox. de 120/40)
+          className="object-contain"
+          priority // Priorizar carregamento
+        />
+      </div>
+
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl">Acessar Plataforma</CardTitle>
-          <CardDescription>Entre com suas credenciais para acessar o dashboard</CardDescription>
+          <CardTitle className="text-2xl text-center">Acessar Plataforma</CardTitle> {/* Centralizado */}
+          <CardDescription className="text-center"> {/* Centralizado */}
+            Entre com suas credenciais para acessar o dashboard
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label> {/* Alterado para email */}
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                type="email" // Alterado para email
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
