@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FileUpload } from '@/components/FileUpload';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Importar buttonVariants
 import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
@@ -20,6 +20,9 @@ import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import * as XLSX from 'xlsx'; // Importar xlsx
 import Papa from 'papaparse'; // Importar papaparse
+import { Download } from 'lucide-react'; // Importar o ícone Download
+import Link from 'next/link'; // Importar Link para o download
+import { cn } from '@/lib/utils'; // Importar cn
 
 // Interface para os dados lidos da planilha
 interface ContactData {
@@ -96,6 +99,8 @@ export default function Home() {
                    rowData[header] = row[index];
                 }
             });
+            // Log do contato processado (opcional, pode remover se não precisar mais)
+            // console.log('Contato XLSX processado (antes do filtro):', rowData);
             return rowData;
           }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone ou telefone muito curto
 
@@ -120,26 +125,26 @@ export default function Home() {
                  console.error("Erros ao parsear CSV:", results.errors);
               }
 
-              // Console LOG
+              // Console LOG - Dados brutos (OK)
               console.log('Dados brutos lidos pelo PapaParse:', results.data);
 
+              // --- INÍCIO DA CORREÇÃO ---
               // Mapeia os dados usando os cabeçalhos normalizados
-              data = (results.data as any[]).map(row => ({
+              data = (results.data as any[]).map(row => { // Abre o bloco da função map
                 // Cria o objeto contact DENTRO do map
-                const contact = { 
+                const contact = {
                     nome: row.nome || row.nomecliente || '', // Usa cabeçalhos normalizados
                     // Limpa caracteres não numéricos do telefone
                     telefone: String(row.telefone || row.phone || row.celular || '').replace(/\D/g, ''),
-                    variavel_1: row.variavel1 || '',
+                    variavel_1: row.variavel1 || '', // Corrigido para usar apenas row.variavel1
                 };
                 // LOG ADICIONADO AQUI para ver o contato antes de filtrar
                 console.log('Contato processado (antes do filtro):', contact);
-                return contact;
-              // Fim da função de callback do map
+                return contact; // Retorna o objeto contact criado
+              // --- FIM DA CORREÇÃO ---
+              }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
 
-                 // Adicione outras colunas aqui se necessário, usando nomes normalizados
-                 }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
-
+              // Lógica de feedback após processamento do CSV
               if (data.length === 0 && results.data.length > 0) {
                  toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha CSV.' });
               } else if (data.length > 0) {
@@ -152,7 +157,7 @@ export default function Home() {
                  toast.warning('Aviso', { description: 'Planilha CSV vazia ou sem dados válidos.' });
               }
               setIsReadingFile(false); // Finaliza loading após processar CSV
-            },
+            }, // Fim do complete
              error: (error: Error) => {
                  console.error("Erro PapaParse:", error);
                  toast.error('Erro ao ler CSV', { description: error.message });
@@ -173,14 +178,14 @@ export default function Home() {
         setParsedData([]);
       } finally {
         // Garante que o loading termine para XLSX e XLS ou em caso de erro inicial
-        // Verifica se 'file' existe antes de acessar 'name'
-        if (file && !file.name.toLowerCase().endsWith('.csv')) {
+        const currentFileName = file?.name?.toLowerCase();
+        if (currentFileName && !currentFileName.endsWith('.csv')) {
              setIsReadingFile(false);
-        } else if (!file && !fileName.endsWith('.csv')) { // Adicionado um fallback caso file seja null inesperadamente
+        } else if (!currentFileName) { // Se file for null ou undefined
              setIsReadingFile(false);
         }
       }
-    };
+    }; // Fim do reader.onload
 
     reader.onerror = (error) => {
         console.error("Erro do FileReader:", error);
@@ -191,7 +196,7 @@ export default function Home() {
     };
 
     // Define a variável fileName *antes* de usá-la no if/else if
-    const fileName = file.name.toLowerCase(); // Corrigido: definindo fileName aqui
+    const fileName = file.name.toLowerCase();
 
     // Decide como ler o arquivo baseado na extensão (agora usando a variável definida)
     if (fileName.endsWith('.csv')) {
@@ -250,21 +255,20 @@ export default function Home() {
             <Label>Planilha de Contatos (.xlsx, .xls, .csv)</Label>
             <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
 
-            {/* 3. Adicionar o botão/link de download */}
-            <div className="flex justify-center pt-2"> {/* Container para centralizar */}
+            <div className="flex justify-center pt-2">
               <Link
-                href="/planilha-modelo.xlsx" // Caminho para o arquivo na pasta public
-                download // Atributo HTML5 para forçar o download
+                href="/planilha-modelo.xlsx"
+                download
                 className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }), // Estilo do botão
-                  "gap-2" // Adiciona espaço entre ícone e texto
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-2"
                 )}
               >
-                <Download className="h-4 w-4" /> {/* Ícone */}
+                <Download className="h-4 w-4" />
                 Baixar Modelo de Planilha
               </Link>
             </div>
-            
+
             {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
             {parsedData.length > 0 && !isReadingFile && (
                 <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
