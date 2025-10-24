@@ -61,11 +61,11 @@ export default function Home() {
           } else {
             const data = results.data as any[]; // Type assertion
             // Basic validation
-            if (!results.meta.fields?.includes('telefone')) {
+            if (!results.meta.fields?.includes('phone')) {
               reject(new Error('Coluna "telefone" não encontrada na planilha.'));
               return;
             }
-            if (!results.meta.fields?.includes('nome')) {
+            if (!results.meta.fields?.includes('client_name')) {
                 reject(new Error('Coluna "nome" não encontrada na planilha.'));
                 return;
             }
