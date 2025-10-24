@@ -26,34 +26,33 @@ import { cn } from '@/lib/utils'; // Importar cn
 
 // Interface para os dados lidos da planilha
 interface ContactData {
-  nome?: string; // Assumindo coluna 'nome'
-  telefone: string; // Assumindo coluna 'telefone' (obrigatória)
-  variavel_1?: string; // Assumindo coluna 'variavel_1'
-  // Adicione outras colunas que você espera ler
-  [key: string]: any; // Permite outras colunas
+  nome?: string;
+  telefone: string;
+  variavel_1?: string;
+  [key: string]: any;
 }
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<ContactData[]>([]); // Estado para os dados lidos
+  const [parsedData, setParsedData] = useState<ContactData[]>([]);
   const [message, setMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Loading do envio da campanha
-  const [isReadingFile, setIsReadingFile] = useState(false); // Loading da leitura do arquivo
+  const [isLoading, setIsLoading] = useState(false);
+  const [isReadingFile, setIsReadingFile] = useState(false);
 
   const insertVariable = (variable: string) => {
     setMessage((prev) => prev + variable);
   };
 
   const handleFileRead = async (file: File | null) => {
-    setSelectedFile(file); // Atualiza o estado do arquivo selecionado
-    setParsedData([]); // Limpa dados anteriores
+    setSelectedFile(file);
+    setParsedData([]);
 
     if (!file) {
       return;
     }
 
-    setIsReadingFile(true); // Indica que a leitura começou
+    setIsReadingFile(true);
     const reader = new FileReader();
 
     reader.onload = (event) => {
@@ -64,47 +63,38 @@ export default function Home() {
         }
 
         let data: ContactData[] = [];
-        // Define fileName *dentro* do onload para garantir que 'file' está disponível
         const fileNameInsideOnload = file.name.toLowerCase();
 
         if (fileNameInsideOnload.endsWith('.xlsx') || fileNameInsideOnload.endsWith('.xls')) {
-          // Ler arquivos Excel (xlsx, xls)
           const workbook = XLSX.read(fileContent, { type: 'array' });
-          const sheetName = workbook.SheetNames[0]; // Pega a primeira planilha
+          const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          // Converte para JSON, header: 1 cria array de arrays, defval preenche células vazias
           const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-          if (jsonData.length < 2) { // Precisa de cabeçalho + pelo menos uma linha de dados
+          if (jsonData.length < 2) {
              throw new Error('Planilha vazia ou sem cabeçalho.');
           }
 
-          const headers = jsonData[0].map(String); // Pega cabeçalhos da primeira linha
-          const rows = jsonData.slice(1); // Pega as linhas de dados
+          const headers = jsonData[0].map(String);
+          const rows = jsonData.slice(1);
 
           data = rows.map(row => {
-            const rowData: ContactData = { telefone: '' }; // Inicializa com telefone obrigatório
+            const rowData: ContactData = { telefone: '' };
             headers.forEach((header, index) => {
-                // Tenta mapear colunas comuns, normalizando nomes (minúsculas, sem acentos/espaços)
                 const normalizedHeader = header.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '');
                 if (normalizedHeader === 'nome' || normalizedHeader === 'nomecliente') {
                    rowData.nome = String(row[index] || '');
                 } else if (normalizedHeader === 'telefone' || normalizedHeader === 'phone' || normalizedHeader === 'celular') {
-                   // Limpa caracteres não numéricos do telefone antes de salvar
                    rowData.telefone = String(row[index] || '').replace(/\D/g, '');
                 } else if (normalizedHeader === 'variavel1' || normalizedHeader === 'variavel_1') {
                    rowData.variavel_1 = String(row[index] || '');
                 } else {
-                   // Adiciona outras colunas se existirem
                    rowData[header] = row[index];
                 }
             });
-            // Log do contato processado (opcional, pode remover se não precisar mais)
-            // console.log('Contato XLSX processado (antes do filtro):', rowData);
             return rowData;
-          }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone ou telefone muito curto
+          }).filter(contact => contact.telefone && contact.telefone.length > 8);
 
-          // Para XLSX, atualiza o estado aqui
           if (data.length === 0) {
              toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha.' });
           } else {
@@ -114,37 +104,28 @@ export default function Home() {
           }
 
         } else if (fileNameInsideOnload.endsWith('.csv')) {
-          // Ler arquivos CSV
-          const csvContent = event.target?.result as string; // Lê como texto para papaparse
-           Papa.parse<any>(csvContent, { // Use <any> ou defina um tipo mais estrito se souber as colunas
-            header: true, // Usa a primeira linha como cabeçalho
+          const csvContent = event.target?.result as string;
+           Papa.parse<any>(csvContent, {
+            header: true,
             skipEmptyLines: true,
-            transformHeader: (header) => header.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ''), // Normaliza cabeçalhos do CSV também
+            transformHeader: (header) => header.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ''),
             complete: (results) => {
               if (results.errors.length > 0) {
                  console.error("Erros ao parsear CSV:", results.errors);
               }
 
-              // Console LOG - Dados brutos (OK)
               console.log('Dados brutos lidos pelo PapaParse:', results.data);
 
-              // --- INÍCIO DA CORREÇÃO ---
-              // Mapeia os dados usando os cabeçalhos normalizados
-              data = (results.data as any[]).map(row => { // Abre o bloco da função map
-                // Cria o objeto contact DENTRO do map
+              data = (results.data as any[]).map(row => {
                 const contact = {
-                    nome: row.nome || row.nomecliente || '', // Usa cabeçalhos normalizados
-                    // Limpa caracteres não numéricos do telefone
+                    nome: row.nome || row.nomecliente || '',
                     telefone: String(row.telefone || row.phone || row.celular || '').replace(/\D/g, ''),
-                    variavel_1: row.variavel1 || '', // Corrigido para usar apenas row.variavel1
+                    variavel_1: row.variavel1 || '',
                 };
-                // LOG ADICIONADO AQUI para ver o contato antes de filtrar
                 console.log('Contato processado (antes do filtro):', contact);
-                return contact; // Retorna o objeto contact criado
-              // --- FIM DA CORREÇÃO ---
-              }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
+                return contact;
+              }).filter(contact => contact.telefone && contact.telefone.length > 8);
 
-              // Lógica de feedback após processamento do CSV
               if (data.length === 0 && results.data.length > 0) {
                  toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha CSV.' });
               } else if (data.length > 0) {
@@ -156,16 +137,15 @@ export default function Home() {
               } else {
                  toast.warning('Aviso', { description: 'Planilha CSV vazia ou sem dados válidos.' });
               }
-              setIsReadingFile(false); // Finaliza loading após processar CSV
-            }, // Fim do complete
+              setIsReadingFile(false);
+            },
              error: (error: Error) => {
                  console.error("Erro PapaParse:", error);
                  toast.error('Erro ao ler CSV', { description: error.message });
-                 setIsReadingFile(false); // Finaliza o loading em caso de erro
+                 setIsReadingFile(false);
              }
           });
-          // Não coloque setIsReadingFile(false) aqui para CSV, pois ele termina no 'complete'
-          return; // Retorna pois o processamento CSV é feito no callback 'complete'
+          return;
 
         } else {
           throw new Error('Formato de arquivo não suportado (.xlsx, .xls ou .csv).');
@@ -174,14 +154,13 @@ export default function Home() {
       } catch (error: any) {
         console.error("Erro ao processar arquivo:", error);
         toast.error('Erro ao ler planilha', { description: error.message || 'Não foi possível processar o arquivo.' });
-        setSelectedFile(null); // Limpa seleção em caso de erro
+        setSelectedFile(null);
         setParsedData([]);
       } finally {
-        // Garante que o loading termine para XLSX e XLS ou em caso de erro inicial
         const currentFileName = file?.name?.toLowerCase();
         if (currentFileName && !currentFileName.endsWith('.csv')) {
              setIsReadingFile(false);
-        } else if (!currentFileName) { // Se file for null ou undefined
+        } else if (!currentFileName && !fileName.endsWith('.csv')) { // Fallback adicionado aqui também
              setIsReadingFile(false);
         }
       }
@@ -195,24 +174,21 @@ export default function Home() {
         setIsReadingFile(false);
     };
 
-    // Define a variável fileName *antes* de usá-la no if/else if
     const fileName = file.name.toLowerCase();
 
-    // Decide como ler o arquivo baseado na extensão (agora usando a variável definida)
     if (fileName.endsWith('.csv')) {
-        reader.readAsText(file); // PapaParse precisa de texto
+        reader.readAsText(file);
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-        reader.readAsArrayBuffer(file); // SheetJS prefere ArrayBuffer
+        reader.readAsArrayBuffer(file);
     } else {
         toast.error('Erro', { description: 'Formato de arquivo inválido (.xlsx, .xls ou .csv).' });
         setSelectedFile(null);
-        setParsedData([]); // Limpa dados se o formato for inválido
+        setParsedData([]);
         setIsReadingFile(false);
     }
   }; // Fim da função handleFileRead
 
   const handleConfirmClick = () => {
-    // Verifica se há dados lidos e mensagem
     if (parsedData.length === 0 || !message.trim()) {
       toast.error('Erro', {
         description: parsedData.length === 0
@@ -224,26 +200,70 @@ export default function Home() {
     setShowConfirmDialog(true);
   };
 
+  // --- FUNÇÃO handleStartCampaign ATUALIZADA ---
   const handleStartCampaign = async () => {
     setIsLoading(true);
+    const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
 
-    // LOG: Mostra os dados que seriam usados
-    console.log("Iniciando campanha com os seguintes dados:", parsedData);
+    console.log("Iniciando campanha - Dados a enviar:", parsedData);
     console.log("Mensagem:", message);
 
-    // Simulação de envio (manter por enquanto)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Envia a mensagem e a lista de contatos no corpo da requisição
+        body: JSON.stringify({
+          message: message,
+          contacts: parsedData,
+        }),
+      });
 
-    toast.success('Sucesso', {
-      description: `Sua campanha para ${parsedData.length} contatos foi enviada para a fila de disparo.`,
-    });
+      // Verifica se a resposta do webhook foi bem-sucedida (status 2xx)
+      if (!response.ok) {
+        // Tenta ler uma mensagem de erro do corpo da resposta, se houver
+        let errorBody = `Erro ${response.status} ao enviar para o webhook.`;
+        try {
+          const errorData = await response.json();
+          // Se o n8n retornar um JSON com uma propriedade 'message', use-a
+          errorBody = errorData.message || JSON.stringify(errorData);
+        } catch (e) {
+          // Se a resposta não for JSON, tenta ler como texto
+           const textError = await response.text();
+           if(textError) errorBody = textError;
+        }
+        throw new Error(errorBody); // Lança um erro para ser pego pelo catch
+      }
 
-    setIsLoading(false);
-    setShowConfirmDialog(false);
-    setSelectedFile(null);
-    setParsedData([]); // Limpa os dados lidos
-    setMessage('');
+      // Opcional: Logar a resposta do webhook se ele retornar algo útil
+      const responseData = await response.json();
+      console.log('Resposta do Webhook n8n:', responseData);
+
+      toast.success('Sucesso!', {
+        description: `Campanha para ${parsedData.length} contatos enviada com sucesso para processamento.`,
+      });
+
+      // Limpa os dados do formulário somente após o envio bem-sucedido
+      setSelectedFile(null);
+      setParsedData([]);
+      setMessage('');
+      setShowConfirmDialog(false);
+
+    } catch (error: any) {
+      // Captura erros de rede ou erros lançados por respostas não-ok
+      console.error('Erro ao enviar para o webhook:', error);
+      toast.error('Erro ao Enviar Campanha', {
+        description: `Falha ao enviar dados: ${error.message || 'Verifique a URL do webhook ou a conexão.'}`,
+      });
+      // Mantém o diálogo aberto e os dados preenchidos para o usuário tentar novamente se quiser
+      setShowConfirmDialog(true); // Reabre ou mantém o diálogo aberto
+    } finally {
+      setIsLoading(false); // Garante que o estado de loading termine, mesmo com erro
+    }
   };
+  // --- FIM DA FUNÇÃO ATUALIZADA ---
 
   return (
     <ProtectedRoute>
