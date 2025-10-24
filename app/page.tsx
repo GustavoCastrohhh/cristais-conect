@@ -125,17 +125,20 @@ export default function Home() {
 
               // Mapeia os dados usando os cabeçalhos normalizados
               data = (results.data as any[]).map(row => ({
+                // Cria o objeto contact DENTRO do map
+                const contact = { 
                     nome: row.nome || row.nomecliente || '', // Usa cabeçalhos normalizados
                     // Limpa caracteres não numéricos do telefone
                     telefone: String(row.telefone || row.phone || row.celular || '').replace(/\D/g, ''),
                     variavel_1: row.variavel1 || '',
-              };
-              // LOG ADICIONADO AQUI para ver o contato antes de filtrar
-              console.log('Contato processado (antes do filtro):', contact);
-              return contact;
+                };
+                // LOG ADICIONADO AQUI para ver o contato antes de filtrar
+                console.log('Contato processado (antes do filtro):', contact);
+                return contact;
+              // Fim da função de callback do map
 
-                    // Adicione outras colunas aqui se necessário, usando nomes normalizados
-                 })).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
+                 // Adicione outras colunas aqui se necessário, usando nomes normalizados
+                 }).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
 
               if (data.length === 0 && results.data.length > 0) {
                  toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha CSV.' });
