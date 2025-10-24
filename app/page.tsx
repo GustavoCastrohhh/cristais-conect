@@ -70,7 +70,7 @@ export default function Home() {
                 return;
             }
              // Filter out rows without a phone number before resolving
-            const validData = data.filter(row => row.telefone && String(row.telefone).trim() !== '');
+            const validData = data.filter(row => row.phone && String(row.phone).trim() !== '');
             resolve(validData);
           }
         },
