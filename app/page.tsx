@@ -61,16 +61,16 @@ export default function Home() {
           } else {
             const data = results.data as any[]; // Type assertion
             // Basic validation
-            if (!results.meta.fields?.includes('phone')) {
-              reject(new Error('Coluna "telefone" não encontrada na planilha.'));
+            if (!results.meta.fields?.includes('client_phone')) {
+              reject(new Error('Coluna "client_phone" não encontrada na planilha.'));
               return;
             }
             if (!results.meta.fields?.includes('client_name')) {
-                reject(new Error('Coluna "nome" não encontrada na planilha.'));
+                reject(new Error('Coluna "client_name" não encontrada na planilha.'));
                 return;
             }
              // Filter out rows without a phone number before resolving
-            const validData = data.filter(row => row.phone && String(row.phone).trim() !== '');
+            const validData = data.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
             resolve(validData);
           }
         },
