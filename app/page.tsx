@@ -120,12 +120,20 @@ export default function Home() {
                  console.error("Erros ao parsear CSV:", results.errors);
               }
 
+              // Console LOG
+              console.log('Dados brutos lidos pelo PapaParse:', results.data);
+
               // Mapeia os dados usando os cabeçalhos normalizados
               data = (results.data as any[]).map(row => ({
                     nome: row.nome || row.nomecliente || '', // Usa cabeçalhos normalizados
                     // Limpa caracteres não numéricos do telefone
                     telefone: String(row.telefone || row.phone || row.celular || '').replace(/\D/g, ''),
-                    variavel_1: row.variavel1 || row.variavel_1 || '',
+                    variavel_1: row.variavel1 || '',
+              };
+              // LOG ADICIONADO AQUI para ver o contato antes de filtrar
+              console.log('Contato processado (antes do filtro):', contact);
+              return contact;
+
                     // Adicione outras colunas aqui se necessário, usando nomes normalizados
                  })).filter(contact => contact.telefone && contact.telefone.length > 8); // Filtra linhas sem telefone válido
 
@@ -238,6 +246,22 @@ export default function Home() {
           <div className="space-y-2">
             <Label>Planilha de Contatos (.xlsx, .xls, .csv)</Label>
             <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
+
+            {/* 3. Adicionar o botão/link de download */}
+            <div className="flex justify-center pt-2"> {/* Container para centralizar */}
+              <Link
+                href="/planilha-modelo.xlsx" // Caminho para o arquivo na pasta public
+                download // Atributo HTML5 para forçar o download
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }), // Estilo do botão
+                  "gap-2" // Adiciona espaço entre ícone e texto
+                )}
+              >
+                <Download className="h-4 w-4" /> {/* Ícone */}
+                Baixar Modelo de Planilha
+              </Link>
+            </div>
+            
             {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
             {parsedData.length > 0 && !isReadingFile && (
                 <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
