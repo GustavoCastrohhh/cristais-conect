@@ -23,6 +23,7 @@ import Papa from 'papaparse'; // Importar papaparse
 import { Download } from 'lucide-react'; // Importar o ícone Download
 import Link from 'next/link'; // Importar Link para o download
 import { cn } from '@/lib/utils'; // Importar cn
+import { useAuth } from '@/contexts/AuthContext';
 
 // Interface para os dados lidos da planilha
 interface ContactData {
@@ -39,6 +40,7 @@ export default function Home() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isReadingFile, setIsReadingFile] = useState(false);
+  const { user } = useAuth(); // Obtém o objeto 'user' do contexto
 
   const insertVariable = (variable: string) => {
     setMessage((prev) => prev + variable);
@@ -207,7 +209,47 @@ export default function Home() {
 
     console.log("Iniciando campanha - Dados a enviar:", parsedData);
     console.log("Mensagem:", message);
+    
+    // Obter dados do usuário antes de enviar
+    const userInfo = {
+        // Use o email como fallback se user_metadata.full_name não existir
+        nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
+        email: user?.email || 'Email não disponível',
+        // Assume que 'phone' está em user_metadata como string
+        telefone: user?.user_metadata?.phone || 'Telefone não disponível'
+    };
 
+    setIsLoading(true);
+    setShowConfirmDialog(false);
+
+    const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
+
+    // Adicionar userInfo ao payload
+    const payload = {
+      message: message,
+      contacts: contactsData,
+      senderInfo: userInfo // Adiciona os dados do remetente
+    };
+
+    try {
+      // Envio com fetch usando JSON.stringify(payload) e Content-Type: application/json
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+     // ... (resto do tratamento de resposta e erro) ...
+
+    } catch (error: any) {
+       // ... (tratamento de erro) ...
+    } finally {
+      setIsLoading(false);
+    }
+  };
+    
     try {
       const response = await fetch(webhookUrl, {
         method: 'POST',
