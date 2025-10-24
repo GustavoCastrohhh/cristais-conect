@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from 'react';
+import Papa from 'papaparse';
+import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FileUpload } from '@/components/FileUpload';
 import { Textarea } from '@/components/ui/textarea';
-import { Button, buttonVariants } from '@/components/ui/button'; // Importar buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
@@ -18,221 +20,120 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import * as XLSX from 'xlsx'; // Importar xlsx
-import Papa from 'papaparse'; // Importar papaparse
-import { Download } from 'lucide-react'; // Importar o ícone Download
-import Link from 'next/link'; // Importar Link para o download
-import { cn } from '@/lib/utils'; // Importar cn
-import { useAuth } from '@/contexts/AuthContext';
-
-// Interface para os dados lidos da planilha
-interface ContactData {
-  nome?: string;
-  telefone: string;
-  variavel_1?: string;
-  [key: string]: any;
-}
+import Link from 'next/link'; // Import Link
+import { Download } from 'lucide-react'; // Import Download icon
+import { cn } from '@/lib/utils'; // Import cn if not already
 
 export default function Home() {
+  const { user } = useAuth();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<ContactData[]>([]);
   const [message, setMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isReadingFile, setIsReadingFile] = useState(false);
-  const { user } = useAuth(); // Obtém o objeto 'user' do contexto
+  const [isLoading, setIsLoading] = useState(false); // General loading state (for sending)
+  const [isReadingFile, setIsReadingFile] = useState(false); // Specific state for file reading
+  const [parsedData, setParsedData] = useState<any[]>([]); // Initialize as empty array for safety
 
+  // Function to insert variable text into the message textarea
   const insertVariable = (variable: string) => {
     setMessage((prev) => prev + variable);
   };
 
-  const handleFileRead = async (file: File | null) => {
-    setSelectedFile(file);
-    setParsedData([]);
-
-    if (!file) {
-      return;
-    }
-
-    setIsReadingFile(true);
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      try {
-        const fileContent = event.target?.result;
-        if (!fileContent) {
-          throw new Error('Não foi possível ler o conteúdo do arquivo.');
-        }
-
-        let data: ContactData[] = [];
-        const fileNameInsideOnload = file.name.toLowerCase();
-
-        if (fileNameInsideOnload.endsWith('.xlsx') || fileNameInsideOnload.endsWith('.xls')) {
-          const workbook = XLSX.read(fileContent, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-          if (jsonData.length < 2) {
-             throw new Error('Planilha vazia ou sem cabeçalho.');
-          }
-
-          const headers = jsonData[0].map(String);
-          const rows = jsonData.slice(1);
-
-          data = rows.map(row => {
-            const rowData: ContactData = { telefone: '' };
-            headers.forEach((header, index) => {
-                const normalizedHeader = header.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '');
-                if (normalizedHeader === 'nome' || normalizedHeader === 'nomecliente') {
-                   rowData.nome = String(row[index] || '');
-                } else if (normalizedHeader === 'telefone' || normalizedHeader === 'phone' || normalizedHeader === 'celular') {
-                   rowData.telefone = String(row[index] || '').replace(/\D/g, '');
-                } else if (normalizedHeader === 'variavel1' || normalizedHeader === 'variavel_1') {
-                   rowData.variavel_1 = String(row[index] || '');
-                } else {
-                   rowData[header] = row[index];
-                }
-            });
-            return rowData;
-          }).filter(contact => contact.telefone && contact.telefone.length > 8);
-
-          if (data.length === 0) {
-             toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha.' });
-          } else {
-              setParsedData(data);
-              console.log("Dados XLSX lidos:", data);
-              toast.success('Planilha lida', { description: `${data.length} contatos encontrados.` });
-          }
-
-        } else if (fileNameInsideOnload.endsWith('.csv')) {
-          const csvContent = event.target?.result as string;
-           Papa.parse<any>(csvContent, {
-            header: true,
-            skipEmptyLines: true,
-            transformHeader: (header) => header.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ''),
-            complete: (results) => {
-              if (results.errors.length > 0) {
-                 console.error("Erros ao parsear CSV:", results.errors);
-              }
-
-              console.log('Dados brutos lidos pelo PapaParse:', results.data);
-
-              data = (results.data as any[]).map(row => {
-                const contact = {
-                    nome: row.nome || row.nomecliente || '',
-                    telefone: String(row.telefone || row.phone || row.celular || '').replace(/\D/g, ''),
-                    variavel_1: row.variavel1 || '',
-                };
-                console.log('Contato processado (antes do filtro):', contact);
-                return contact;
-              }).filter(contact => contact.telefone && contact.telefone.length > 8);
-
-              if (data.length === 0 && results.data.length > 0) {
-                 toast.warning('Aviso', { description: 'Nenhum contato com telefone válido encontrado na planilha CSV.' });
-              } else if (data.length > 0) {
-                 setParsedData(data);
-                 console.log("Dados CSV lidos:", data);
-                 toast.success('Planilha lida', { description: `${data.length} contatos encontrados.` });
-              } else if (results.errors.length > 0) {
-                 toast.error('Erro ao ler CSV', { description: 'Verifique o formato do arquivo e tente novamente.' });
-              } else {
-                 toast.warning('Aviso', { description: 'Planilha CSV vazia ou sem dados válidos.' });
-              }
-              setIsReadingFile(false);
-            },
-             error: (error: Error) => {
-                 console.error("Erro PapaParse:", error);
-                 toast.error('Erro ao ler CSV', { description: error.message });
-                 setIsReadingFile(false);
-             }
-          });
+  // Function to parse the selected file (only CSV for now)
+  const parseFile = (file: File): Promise<any[]> => { // Explicit return type Promise<any[]>
+    return new Promise((resolve, reject) => {
+      // Check file type extension
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      if (fileExtension !== 'csv') {
+          // You could add support for xlsx here later using the 'xlsx' library
+          reject(new Error('Formato de arquivo inválido. Por favor, envie um arquivo .csv'));
           return;
-
-        } else {
-          throw new Error('Formato de arquivo não suportado (.xlsx, .xls ou .csv).');
-        }
-
-      } catch (error: any) {
-        console.error("Erro ao processar arquivo:", error);
-        toast.error('Erro ao ler planilha', { description: error.message || 'Não foi possível processar o arquivo.' });
-        setSelectedFile(null);
-        setParsedData([]);
-      } finally {
-        const currentFileName = file?.name?.toLowerCase();
-        if (currentFileName && !currentFileName.endsWith('.csv')) {
-             setIsReadingFile(false);
-        } else if (!currentFileName && !fileName.endsWith('.csv')) { // Fallback adicionado aqui também
-             setIsReadingFile(false);
-        }
       }
-    }; // Fim do reader.onload
 
-    reader.onerror = (error) => {
-        console.error("Erro do FileReader:", error);
-        toast.error('Erro de Leitura', { description: 'Não foi possível ler o arquivo selecionado.' });
-        setSelectedFile(null);
-        setParsedData([]);
-        setIsReadingFile(false);
-    };
-
-    const fileName = file.name.toLowerCase();
-
-    if (fileName.endsWith('.csv')) {
-        reader.readAsText(file);
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-        reader.readAsArrayBuffer(file);
-    } else {
-        toast.error('Erro', { description: 'Formato de arquivo inválido (.xlsx, .xls ou .csv).' });
-        setSelectedFile(null);
-        setParsedData([]);
-        setIsReadingFile(false);
-    }
-  }; // Fim da função handleFileRead
-
-  const handleConfirmClick = () => {
-    if (parsedData.length === 0 || !message.trim()) {
-      toast.error('Erro', {
-        description: parsedData.length === 0
-          ? 'Por favor, selecione e carregue uma planilha com contatos válidos (coluna telefone).'
-          : 'Por favor, digite uma mensagem.',
+      // Use Papaparse for CSV
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.errors.length > 0) {
+            console.error("Erros ao parsear CSV:", results.errors);
+            // Pega a primeira mensagem de erro para exibir
+            reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
+          } else {
+            const data = results.data as any[]; // Type assertion
+            // Basic validation
+            if (!results.meta.fields?.includes('telefone')) {
+              reject(new Error('Coluna "telefone" não encontrada na planilha.'));
+              return;
+            }
+            if (!results.meta.fields?.includes('nome')) {
+                reject(new Error('Coluna "nome" não encontrada na planilha.'));
+                return;
+            }
+             // Filter out rows without a phone number before resolving
+            const validData = data.filter(row => row.telefone && String(row.telefone).trim() !== '');
+            resolve(validData);
+          }
+        },
+        error: (error: any) => { // Add type annotation for error
+          console.error("Erro no Papaparse:", error);
+          reject(new Error(`Não foi possível ler o arquivo CSV: ${error.message}`));
+        }
       });
-      return;
-    }
-    setShowConfirmDialog(true);
+    });
   };
 
-  // --- FUNÇÃO handleStartCampaign ATUALIZADA ---
-  const handleStartCampaign = async () => {
-    setIsLoading(true);
-    const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
+  // Handles reading the file when selected
+  const handleFileRead = async (file: File | null) => {
+    setSelectedFile(file);
+    setParsedData([]); // Clear previous data
 
-    console.log("Iniciando campanha - Dados a enviar:", parsedData);
-    console.log("Mensagem:", message);
-    
-    // Obter dados do usuário antes de enviar
+    if (file) {
+      setIsReadingFile(true); // Start reading indicator
+      try {
+        const data = await parseFile(file);
+        if (data.length === 0) {
+            toast.warning("Planilha lida", { description: "Nenhum contato com telefone válido encontrado."});
+        }
+        setParsedData(data);
+      } catch (error: any) {
+        toast.error("Erro ao Ler Planilha", { description: error.message });
+        setSelectedFile(null); // Deselect file on error
+      } finally {
+        setIsReadingFile(false); // Stop reading indicator
+      }
+    }
+  };
+
+
+  // Handles the final confirmation and sending to n8n
+  const handleStartCampaign = async () => {
+    // Basic check, though data should be parsed already if dialog is open
+    if (!parsedData || parsedData.length === 0 || !message.trim()) {
+      toast.error('Erro', {
+        description: 'Não há contatos válidos ou a mensagem está vazia.',
+      });
+      setShowConfirmDialog(false);
+      return;
+    }
+
+    // Get user info
     const userInfo = {
-        // Use o email como fallback se user_metadata.full_name não existir
-        nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
-        email: user?.email || 'Email não disponível',
-        // Assume que 'phone' está em user_metadata como string
-        telefone: user?.user_metadata?.phone || 'Telefone não disponível'
+      nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
+      email: user?.email || 'Email não disponível',
+      telefone: user?.user_metadata?.phone || 'Telefone não disponível'
     };
 
-    setIsLoading(true);
-    setShowConfirmDialog(false);
+    setIsLoading(true); // Start sending indicator
+    setShowConfirmDialog(false); // Close dialog
 
     const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
-
-    // Adicionar userInfo ao payload
     const payload = {
       message: message,
-      contacts: contactsData,
-      senderInfo: userInfo // Adiciona os dados do remetente
+      contacts: parsedData,
+      senderInfo: userInfo
     };
 
     try {
-      // Envio com fetch usando JSON.stringify(payload) e Content-Type: application/json
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -241,113 +142,112 @@ export default function Home() {
         body: JSON.stringify(payload),
       });
 
-     // ... (resto do tratamento de resposta e erro) ...
-
-    } catch (error: any) {
-       // ... (tratamento de erro) ...
-    } finally {
-      setIsLoading(false);
-    }
-  };
-    
-    try {
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Envia a mensagem e a lista de contatos no corpo da requisição
-        body: JSON.stringify({
-          message: message,
-          contacts: parsedData,
-        }),
-      });
-
-      // Verifica se a resposta do webhook foi bem-sucedida (status 2xx)
       if (!response.ok) {
-        // Tenta ler uma mensagem de erro do corpo da resposta, se houver
+        // Try to get a better error message from the response body
         let errorBody = `Erro ${response.status} ao enviar para o webhook.`;
         try {
           const errorData = await response.json();
-          // Se o n8n retornar um JSON com uma propriedade 'message', use-a
+          // If n8n returns a JSON with a 'message' property, use it
           errorBody = errorData.message || JSON.stringify(errorData);
         } catch (e) {
-          // Se a resposta não for JSON, tenta ler como texto
+          // If the response isn't JSON, try reading as text
            const textError = await response.text();
            if(textError) errorBody = textError;
         }
-        throw new Error(errorBody); // Lança um erro para ser pego pelo catch
+        throw new Error(errorBody); // Throw an error to be caught by the catch block
       }
 
-      // Opcional: Logar a resposta do webhook se ele retornar algo útil
+      // Optional: Log the webhook response if it returns something useful
       const responseData = await response.json();
       console.log('Resposta do Webhook n8n:', responseData);
 
       toast.success('Sucesso!', {
-        description: `Campanha para ${parsedData.length} contatos enviada com sucesso para processamento.`,
+        description: 'Sua campanha foi enviada para processamento.',
       });
 
-      // Limpa os dados do formulário somente após o envio bem-sucedido
+      // Reset state on success
       setSelectedFile(null);
-      setParsedData([]);
       setMessage('');
-      setShowConfirmDialog(false);
+      setParsedData([]);
 
     } catch (error: any) {
-      // Captura erros de rede ou erros lançados por respostas não-ok
-      console.error('Erro ao enviar para o webhook:', error);
-      toast.error('Erro ao Enviar Campanha', {
-        description: `Falha ao enviar dados: ${error.message || 'Verifique a URL do webhook ou a conexão.'}`,
+      console.error('Falha ao enviar campanha:', error);
+      toast.error('Falha no Envio', {
+        description: error.message || 'Ocorreu um erro inesperado.',
       });
-      // Mantém o diálogo aberto e os dados preenchidos para o usuário tentar novamente se quiser
-      setShowConfirmDialog(true); // Reabre ou mantém o diálogo aberto
     } finally {
-      setIsLoading(false); // Garante que o estado de loading termine, mesmo com erro
+      setIsLoading(false); // Stop sending indicator
     }
   };
-  // --- FIM DA FUNÇÃO ATUALIZADA ---
+  // --- END OF UPDATED FUNCTION ---
 
-  return (
+   // Opens the confirmation dialog (data should be parsed by handleFileRead now)
+   const handleConfirmClick = () => {
+    if (!selectedFile) {
+        toast.error('Erro', { description: 'Por favor, selecione um arquivo primeiro.' });
+        return;
+    }
+    if (isReadingFile) {
+        toast.warning('Aguarde', { description: 'Aguarde a leitura do arquivo terminar.' });
+        return;
+    }
+     if (parsedData.length === 0) {
+        toast.error('Erro', { description: 'Nenhum contato válido encontrado no arquivo selecionado.' });
+        return;
+    }
+    if (!message.trim()) {
+      toast.error('Erro', { description: 'Por favor, digite uma mensagem.' });
+      return;
+    }
+    setShowConfirmDialog(true);
+  };
+
+
+  return ( // Make sure this return is inside the Home component scope
     <ProtectedRoute>
       <AppLayout>
         <div className="max-w-4xl mx-auto space-y-6">
           <h1 className="text-3xl font-bold">Nova Campanha de Disparo</h1>
 
           <div className="space-y-2">
-            <Label>Planilha de Contatos (.xlsx, .xls, .csv)</Label>
+            <Label>Planilha de Contatos (.csv)</Label>
+            {/* Pass handleFileRead to FileUpload */}
             <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
 
-            <div className="flex justify-center pt-2">
-              <Link
-                href="/planilha-modelo.xlsx"
-                download
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "gap-2"
-                )}
-              >
-                <Download className="h-4 w-4" />
-                Baixar Modelo de Planilha
-              </Link>
-            </div>
+            {/* Link para baixar modelo */}
+             <div className="flex justify-center pt-2">
+               <Link
+                 href="/planilha-modelo.csv" // Make sure this file exists in your /public folder
+                 download
+                 className={cn(
+                   buttonVariants({ variant: "outline", size: "sm" }),
+                   "gap-2"
+                 )}
+               >
+                 <Download className="h-4 w-4" />
+                 Baixar Modelo CSV
+               </Link>
+             </div>
 
-            {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
-            {parsedData.length > 0 && !isReadingFile && (
-                <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
-            )}
-             {selectedFile && parsedData.length === 0 && !isReadingFile && (
-                <p className="text-sm text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
-            )}
+             {/* Feedback Visual sobre Leitura/Contagem */}
+             {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
+             {parsedData.length > 0 && !isReadingFile && (
+                 <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
+             )}
+              {selectedFile && parsedData.length === 0 && !isReadingFile && (
+                  <p className="text-sm text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
+              )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="message">Mensagem</Label>
-            <div className="flex gap-2 mb-2 flex-wrap">
+            <div className="flex gap-2 mb-2 flex-wrap"> {/* Added flex-wrap */}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => insertVariable('{{nome}}')}
+                // disabled={parsedData.length === 0} // Optionally disable if no contacts
               >
                 Inserir {'{{nome}}'}
               </Button>
@@ -356,9 +256,11 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={() => insertVariable('{{variavel_1}}')}
+                // disabled={parsedData.length === 0} // Optionally disable if no contacts
               >
                 Inserir {'{{variavel_1}}'}
               </Button>
+              {/* Add more buttons if needed */}
             </div>
             <Textarea
               id="message"
@@ -368,16 +270,16 @@ export default function Home() {
               rows={8}
               className="resize-none"
             />
-            <p className="text-xs text-muted-foreground">
-              Variáveis disponíveis: {'{{nome}}'}, {'{{variavel_1}}'}
-            </p>
+             <p className="text-xs text-muted-foreground">
+               Variáveis disponíveis: {'{{nome}}'}, {'{{variavel_1}}'}
+             </p>
           </div>
 
           <Button
             onClick={handleConfirmClick}
             size="lg"
             className="w-full"
-            disabled={isReadingFile || isLoading}
+            disabled={isReadingFile || isLoading} // Disable while reading or sending
           >
             {isLoading ? 'Enviando Campanha...' : 'Disparar Campanha'}
           </Button>
@@ -410,5 +312,5 @@ export default function Home() {
         </div>
       </AppLayout>
     </ProtectedRoute>
-  );
-}
+  ); // End of main return
+} // End of Home component
