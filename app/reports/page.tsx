@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import * as React from 'react'; // Import React
+import { useState, useEffect, useMemo } from 'react'; // Import useMemo
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,16 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import { Input } from '@/components/ui/input'; // Importar Input
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Importar Select
+import { Label } from '@/components/ui/label'; // Importar Label
+import { Button } from '@/components/ui/button'; // Importar Button
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -32,6 +43,7 @@ const ITEMS_PER_PAGE = 10;
 interface HistoricoDisparo {
   id: string | number;
   criado_em: string;
+  nome_campanha: string | null;
   nome_cliente: string | null;
   phone_cliente: number | null;
   mensagem: string | null;
@@ -41,44 +53,42 @@ interface HistoricoDisparo {
 }
 
 export default function ReportsPage() {
-  // Use user?.user_metadata?.phone para acessar o telefone
-  const { user, isLoading: isAuthLoading } = useAuth(); // Renomeie isLoading do useAuth para evitar conflito
-  const [data, setData] = useState<HistoricoDisparo[]>([]);
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [allData, setAllData] = useState<HistoricoDisparo[]>([]); // Todos os dados originais
+  const [filteredData, setFilteredData] = useState<HistoricoDisparo[]>([]); // Dados após filtros
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoadingData, setIsLoadingData] = useState(true); // Estado de loading específico para os dados
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [stats, setStats] = useState({ total: 0, success: 0, failed: 0 });
+  const [campaignNames, setCampaignNames] = useState<string[]>([]); // Nomes únicos de campanha
+  const [selectedCampaign, setSelectedCampaign] = useState<string>(''); // Filtro de campanha
+  const [phoneFilter, setPhoneFilter] = useState<string>(''); // Filtro de telefone
 
+  // Efeito para buscar dados iniciais e nomes de campanha
   useEffect(() => {
-    // Não faça nada se a autenticação ainda estiver carregando
-    if (isAuthLoading) {
-        return;
-    }
+    if (isAuthLoading) return;
 
-    // Verifica se o usuário está autenticado e tem o telefone nos metadados
     const userPhoneString = user?.user_metadata?.phone as string | undefined;
-
     if (!user || !userPhoneString) {
-      console.warn('Usuário não autenticado ou sem telefone nos metadados para buscar histórico.');
-      setData([]);
+      console.warn('Usuário não autenticado ou sem telefone.');
+      setAllData([]);
+      setCampaignNames([]);
       setStats({ total: 0, success: 0, failed: 0 });
-      setIsLoadingData(false); // Garante que o loading de dados termine
-      return; // Sai do useEffect
+      setIsLoadingData(false);
+      return;
     }
 
-    // Convertendo o telefone do usuário para número para a comparação
     const userPhoneNumeric = parseInt(userPhoneString.replace(/\D/g, ''), 10);
     if (isNaN(userPhoneNumeric)) {
-      console.error('Número de telefone nos metadados do usuário inválido:', userPhoneString);
-      setData([]);
+      console.error('Telefone inválido:', userPhoneString);
+      setAllData([]);
+      setCampaignNames([]);
       setStats({ total: 0, success: 0, failed: 0 });
-      setIsLoadingData(false); // Garante que o loading de dados termine
+      setIsLoadingData(false);
       return;
     }
 
     async function loadData() {
-      setIsLoadingData(true); // Inicia o loading *dos dados*
-      console.log(`Buscando dados do Supabase para o usuário com telefone (metadata): ${userPhoneNumeric}...`);
-
+      setIsLoadingData(true);
       const { data: historicoData, error } = await supabase
         .from('historico_disparos')
         .select('*')
@@ -86,36 +96,67 @@ export default function ReportsPage() {
         .order('criado_em', { ascending: false });
 
       if (error) {
-        console.error('Erro ao buscar dados do Supabase:', error.message);
-        setData([]);
+        console.error('Erro Supabase:', error.message);
+        setAllData([]);
+        setCampaignNames([]);
+        setStats({ total: 0, success: 0, failed: 0 });
       } else if (historicoData) {
-        console.log('Dados recebidos:', historicoData);
-        setData(historicoData);
+        setAllData(historicoData);
 
+        // Extrair nomes únicos de campanha (não nulos)
+        const uniqueNames = Array.from(
+          new Set(historicoData.map(item => item.nome_campanha).filter(name => name !== null))
+        ) as string[];
+        setCampaignNames(uniqueNames.sort()); // Ordena alfabeticamente
+
+        // Calcular estatísticas com base em allData
         const total = historicoData.length;
         const success = historicoData.filter(item => item.status === true).length;
-        const failed = historicoData.filter(item => item.status === false).length;
+        const failed = total - success; // Simplificado
         setStats({ total, success, failed });
-      } else {
-        setData([]);
-      }
 
-      setIsLoadingData(false); // Finaliza o loading *dos dados*
+      } else {
+        setAllData([]);
+        setCampaignNames([]);
+        setStats({ total: 0, success: 0, failed: 0 });
+      }
+      setIsLoadingData(false);
     }
 
     loadData();
-    // A dependência agora é apenas 'user' e 'isAuthLoading'.
-    // A busca será reativada se o usuário mudar ou quando a autenticação terminar de carregar.
   }, [user, isAuthLoading]);
 
-  const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
+  // Efeito para aplicar filtros quando 'allData' ou os filtros mudam
+  useEffect(() => {
+    let tempData = [...allData];
+
+    // Aplicar filtro de campanha
+    if (selectedCampaign && selectedCampaign !== 'all') {
+      tempData = tempData.filter(item => item.nome_campanha === selectedCampaign);
+    }
+
+    // Aplicar filtro de telefone (busca parcial)
+    if (phoneFilter.trim()) {
+      const searchTerm = phoneFilter.replace(/\D/g, ''); // Remover não dígitos para busca
+      tempData = tempData.filter(item =>
+        item.phone_cliente?.toString().includes(searchTerm)
+      );
+    }
+
+    setFilteredData(tempData);
+    setCurrentPage(1); // Resetar para a primeira página ao aplicar filtros
+  }, [allData, selectedCampaign, phoneFilter]);
+
+  // Use filteredData para paginação e exibição na tabela
+  const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentData = data.slice(startIndex, endIndex);
+  const currentData = filteredData.slice(startIndex, endIndex);
 
-  // Função getStatusBadge (sem alterações)
+  // Funções auxiliares (getStatusBadge, formatarData) permanecem as mesmas
   const getStatusBadge = (status: boolean | null) => {
-    if (status === true) {
+    // ... (código existente) ...
+     if (status === true) {
       return <Badge className="bg-green-600 hover:bg-green-700">Enviado</Badge>;
     } else if (status === false) {
       return <Badge variant="destructive">Falha</Badge>;
@@ -124,9 +165,9 @@ export default function ReportsPage() {
     }
   };
 
-  // Função formatarData (sem alterações)
   const formatarData = (dataIso: string | null) => {
-    if (!dataIso) return '-';
+    // ... (código existente) ...
+     if (!dataIso) return '-';
     try {
       const dataObj = parseISO(dataIso);
       return format(dataObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
@@ -136,9 +177,12 @@ export default function ReportsPage() {
     }
   };
 
-  // Usa isLoadingData para os Skeletons e a mensagem de carregando
-  const showLoadingState = isLoadingData || isAuthLoading;
+  const handleClearFilters = () => {
+    setSelectedCampaign('');
+    setPhoneFilter('');
+  };
 
+  const showLoadingState = isLoadingData || isAuthLoading;
 
   return (
     <ProtectedRoute>
@@ -146,10 +190,10 @@ export default function ReportsPage() {
         <div className="space-y-6">
           <h1 className="text-3xl font-bold">Relatório de Envios</h1>
 
-          {/* Cards de Estatísticas */}
+          {/* Cards de Estatísticas (usam stats de allData) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ... Cards ... Usam showLoadingState */}
-             <Card>
+             {/* ... (cards existentes, já usam 'stats' que é calculado com allData) ... */}
+              <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                   Total Registros
@@ -181,29 +225,72 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          {/* Tabela de Histórico */}
+          {/* Seção de Filtros */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Filtros</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1 w-full md:w-auto space-y-2">
+                <Label htmlFor="campaign-filter">Filtrar por Campanha</Label>
+                <Select
+                  value={selectedCampaign}
+                  onValueChange={setSelectedCampaign}
+                  disabled={showLoadingState || campaignNames.length === 0}
+                >
+                  <SelectTrigger id="campaign-filter">
+                    <SelectValue placeholder="Todas as Campanhas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Campanhas</SelectItem>
+                    {campaignNames.map((name) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 w-full md:w-auto space-y-2">
+                <Label htmlFor="phone-filter">Filtrar por Telefone</Label>
+                <Input
+                  id="phone-filter"
+                  placeholder="Digite o telefone do cliente..."
+                  value={phoneFilter}
+                  onChange={(e) => setPhoneFilter(e.target.value)}
+                  disabled={showLoadingState}
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleClearFilters}
+                disabled={showLoadingState || (!selectedCampaign && !phoneFilter)}
+              >
+                Limpar Filtros
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Tabela de Histórico (usa currentData de filteredData) */}
           <Card>
             <CardHeader>
               <CardTitle>Histórico de Envios</CardTitle>
             </CardHeader>
             <CardContent>
-              {showLoadingState ? ( // Usa showLoadingState
+              {showLoadingState ? (
                 <div className="space-y-2">
                     <Skeleton className="h-10 w-full" />
                     <Skeleton className="h-10 w-full" />
                     <Skeleton className="h-10 w-full" />
                 </div>
-                // Verifica se terminou de carregar e não tem dados nem usuário/telefone válidos
-              ) : data.length === 0 && (!user || !user.user_metadata?.phone || isNaN(parseInt(String(user.user_metadata.phone).replace(/\D/g,'')))) ? (
-                <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado ou usuário sem telefone válido configurado.</div>
-              ) : data.length === 0 ? ( // Terminou de carregar, tem usuário/telefone, mas não achou dados
-                <div className="text-center py-8 text-muted-foreground">Nenhum registro encontrado para este usuário.</div>
-              ) : ( // Terminou de carregar e tem dados
+              ) : filteredData.length === 0 ? ( // Verifica dados filtrados
+                <div className="text-center py-8 text-muted-foreground">
+                    {allData.length === 0 ? "Nenhum registro encontrado para este usuário." : "Nenhum registro encontrado com os filtros aplicados."}
+                </div>
+              ) : (
                 <>
                   <Table>
-                    {/* ... TableHeader e TableBody como antes ... */}
-                      <TableHeader>
+                    <TableHeader>
                       <TableRow>
+                        <TableHead>Campanha</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Telefone Cliente</TableHead>
                         <TableHead>Status</TableHead>
@@ -211,9 +298,10 @@ export default function ReportsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {currentData.map((row) => (
+                      {currentData.map((row) => ( // Mapeia currentData
                         <TableRow key={row.id}>
-                          <TableCell className="font-medium">{row.nome_cliente || '-'}</TableCell>
+                          <TableCell className="font-medium">{row.nome_campanha || '-'}</TableCell>
+                          <TableCell>{row.nome_cliente || '-'}</TableCell>
                           <TableCell>{row.phone_cliente || '-'}</TableCell>
                           <TableCell>{getStatusBadge(row.status)}</TableCell>
                           <TableCell>{formatarData(row.criado_em)}</TableCell>
@@ -222,45 +310,45 @@ export default function ReportsPage() {
                     </TableBody>
                   </Table>
 
-                  {/* Paginação */}
+                  {/* Paginação (usa totalPages de filteredData) */}
                   {totalPages > 1 && (
                      <div className="mt-4">
-                      {/* ... Paginação como antes ... */}
                        <Pagination>
                         <PaginationContent>
                           <PaginationItem>
                             <PaginationPrevious
                               href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (currentPage > 1) setCurrentPage(currentPage - 1);
-                              }}
+                              onClick={(e) => { e.preventDefault(); if (currentPage > 1) setCurrentPage(currentPage - 1); }}
                               aria-disabled={currentPage <= 1}
                               tabIndex={currentPage <= 1 ? -1 : undefined}
                               className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
                             />
                           </PaginationItem>
-                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <PaginationItem key={page}>
-                              <PaginationLink
-                                href="#"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setCurrentPage(page);
-                                }}
-                                isActive={currentPage === page}
-                              >
-                                {page}
-                              </PaginationLink>
-                            </PaginationItem>
+                          {/* Lógica de paginação como antes */}
+                          {Array.from({ length: totalPages }, (_, i) => i + 1)
+                           .filter(page => page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1))
+                           .map((page, index, arr) => (
+                            <React.Fragment key={page}>
+                              {index > 0 && page > arr[index - 1] + 1 && (
+                                <PaginationItem>
+                                  <span className="px-3">...</span>
+                                </PaginationItem>
+                              )}
+                              <PaginationItem>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => { e.preventDefault(); setCurrentPage(page); }}
+                                  isActive={currentPage === page}
+                                >
+                                  {page}
+                                </PaginationLink>
+                              </PaginationItem>
+                            </React.Fragment>
                           ))}
                           <PaginationItem>
                             <PaginationNext
                               href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                if (currentPage < totalPages) setCurrentPage(currentPage + 1);
-                              }}
+                              onClick={(e) => { e.preventDefault(); if (currentPage < totalPages) setCurrentPage(currentPage + 1); }}
                               aria-disabled={currentPage >= totalPages}
                               tabIndex={currentPage >= totalPages ? -1 : undefined}
                               className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
