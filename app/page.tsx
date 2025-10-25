@@ -55,7 +55,7 @@ export default function Home() {
             reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
           } else {
             const data = results.data as any[];
-            if (!results.meta.fields?.includes('phone')) {
+            if (!results.meta.fields?.includes('client_phone')) {
               reject(new Error('Coluna "phone" não encontrada na planilha.'));
               return;
             }
@@ -63,7 +63,7 @@ export default function Home() {
                 reject(new Error('Coluna "client_name" não encontrada na planilha.'));
                 return;
             }
-            const validData = data.filter(row => row.phone && String(row.phone).trim() !== '');
+            const validData = data.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
             resolve(validData);
           }
         },
