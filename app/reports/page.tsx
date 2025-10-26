@@ -41,7 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const ITEMS_PER_PAGE = 10;
 
 // Interface Atualizada
-interface HistoricoDisparo {
+interface HistoricoDisparos {
   id: string | number;
   created_at: string;
   client_name: string | null;
@@ -95,7 +95,7 @@ export default function ReportsPage() {
     async function loadData() {
       setIsLoadingData(true);
       const { data: historicoData, error } = await supabase
-        .from('historico_disparo') // Tabela correta
+        .from('historico_disparos') // Tabela correta
         .select('*')
         .eq('user_phone', userPhoneNumeric) // Coluna correta
         .order('created_at', { ascending: false }); // Coluna correta
