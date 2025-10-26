@@ -41,7 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const ITEMS_PER_PAGE = 10;
 
 // Interface Atualizada
-interface HistoricoDisparos {
+interface HistoricoDisparo {
   id: string | number;
   created_at: string;
   client_name: string | null;
