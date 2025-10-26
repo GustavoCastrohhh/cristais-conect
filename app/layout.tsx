@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Dashboard de Disparo',
+  title: 'Cristais Conect',
   description: 'Plataforma de disparo de mensagens',
 };
 
