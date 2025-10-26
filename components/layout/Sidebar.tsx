@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   {
-    title: 'Dashboard',
+    title: 'Lançar Campanha',
     href: '/',
     icon: Rocket,
   },
@@ -24,7 +24,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r bg-card h-screen sticky top-0">
       <div className="p-6">
-        <h2 className="text-2xl font-bold text-primary">Dashboard</h2>
+        <h2 className="text-2xl font-bold text-primary">Cristais Conect</h2>
       </div>
       <nav className="space-y-2 px-3">
         {navItems.map((item) => {

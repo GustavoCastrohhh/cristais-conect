@@ -54,7 +54,7 @@ export default function LoginPage() {
         <CardHeader>
           <CardTitle className="text-2xl text-center">Acessar Plataforma</CardTitle> {/* Centralizado */}
           <CardDescription className="text-center"> {/* Centralizado */}
-            Entre com suas credenciais para acessar o dashboard
+            Entre com suas credenciais para acessar o Cristais Conect
           </CardDescription>
         </CardHeader>
         <CardContent>
