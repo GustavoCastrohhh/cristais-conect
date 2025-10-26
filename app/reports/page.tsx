@@ -40,17 +40,22 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const ITEMS_PER_PAGE = 10;
 
+// Interface Atualizada
 interface HistoricoDisparo {
   id: string | number;
-  criado_em: string;
-  nome_campanha: string | null;
-  nome_cliente: string | null;
-  phone_cliente: number | null;
-  mensagem: string | null;
+  created_at: string;
+  client_name: string | null;
+  client_phone: number | null;
+  message: string | null;
   status: boolean | null;
-  nome_usuario: string | null;
-  phone_usuario: number | null;
+  user_name: string | null;
+  user_phone: number | null;
+  whatsapp_ver: boolean | null;
+  remote_jid: string | null;
+  campaign_name: string | null;
+  client_type: string | null;
 }
+
 
 export default function ReportsPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -90,10 +95,10 @@ export default function ReportsPage() {
     async function loadData() {
       setIsLoadingData(true);
       const { data: historicoData, error } = await supabase
-        .from('historico_disparos')
+        .from('historico_disparo') // Tabela correta
         .select('*')
-        .eq('phone_usuario', userPhoneNumeric)
-        .order('criado_em', { ascending: false });
+        .eq('user_phone', userPhoneNumeric) // Coluna correta
+        .order('created_at', { ascending: false }); // Coluna correta
 
       if (error) {
         console.error('Erro Supabase:', error.message);
@@ -105,14 +110,14 @@ export default function ReportsPage() {
 
         // Extrair nomes únicos de campanha (não nulos)
         const uniqueNames = Array.from(
-          new Set(historicoData.map(item => item.nome_campanha).filter(name => name !== null))
+          new Set(historicoData.map(item => item.campaign_name).filter(name => name !== null)) // Usa campaign_name
         ) as string[];
         setCampaignNames(uniqueNames.sort()); // Ordena alfabeticamente
 
-        // Calcular estatísticas com base em allData
+        // Calcular estatísticas com base em allData (lógica inalterada)
         const total = historicoData.length;
         const success = historicoData.filter(item => item.status === true).length;
-        const failed = total - success; // Simplificado
+        const failed = total - success;
         setStats({ total, success, failed });
 
       } else {
@@ -132,14 +137,14 @@ export default function ReportsPage() {
 
     // Aplicar filtro de campanha
     if (selectedCampaign && selectedCampaign !== 'all') {
-      tempData = tempData.filter(item => item.nome_campanha === selectedCampaign);
+      tempData = tempData.filter(item => item.campaign_name === selectedCampaign); // Usa campaign_name
     }
 
     // Aplicar filtro de telefone (busca parcial)
     if (phoneFilter.trim()) {
       const searchTerm = phoneFilter.replace(/\D/g, ''); // Remover não dígitos para busca
       tempData = tempData.filter(item =>
-        item.phone_cliente?.toString().includes(searchTerm)
+        item.client_phone?.toString().includes(searchTerm) // Usa client_phone
       );
     }
 
@@ -155,7 +160,6 @@ export default function ReportsPage() {
 
   // Funções auxiliares (getStatusBadge, formatarData) permanecem as mesmas
   const getStatusBadge = (status: boolean | null) => {
-    // ... (código existente) ...
      if (status === true) {
       return <Badge className="bg-green-600 hover:bg-green-700">Enviado</Badge>;
     } else if (status === false) {
@@ -166,7 +170,6 @@ export default function ReportsPage() {
   };
 
   const formatarData = (dataIso: string | null) => {
-    // ... (código existente) ...
      if (!dataIso) return '-';
     try {
       const dataObj = parseISO(dataIso);
@@ -192,7 +195,6 @@ export default function ReportsPage() {
 
           {/* Cards de Estatísticas (usam stats de allData) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             {/* ... (cards existentes, já usam 'stats' que é calculado com allData) ... */}
               <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -300,11 +302,12 @@ export default function ReportsPage() {
                     <TableBody>
                       {currentData.map((row) => ( // Mapeia currentData
                         <TableRow key={row.id}>
-                          <TableCell className="font-medium">{row.nome_campanha || '-'}</TableCell>
-                          <TableCell>{row.nome_cliente || '-'}</TableCell>
-                          <TableCell>{row.phone_cliente || '-'}</TableCell>
+                          {/* Usa os nomes corretos da interface */}
+                          <TableCell className="font-medium">{row.campaign_name || '-'}</TableCell>
+                          <TableCell>{row.client_name || '-'}</TableCell>
+                          <TableCell>{row.client_phone || '-'}</TableCell>
                           <TableCell>{getStatusBadge(row.status)}</TableCell>
-                          <TableCell>{formatarData(row.criado_em)}</TableCell>
+                          <TableCell>{formatarData(row.created_at)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
