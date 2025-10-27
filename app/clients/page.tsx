@@ -147,9 +147,9 @@ export default function ClientsPage() {
                             {client.client_type ? <Badge variant="secondary">{client.client_type}</Badge> : '-'}
                           </TableCell>
                           <TableCell>{client.campaign_name || '-'}</TableCell>
-                          {/* Colunas Placeholder */}
-                          {/* <TableCell>-</TableCell> */}
-                          {/* <TableCell>-</TableCell> */}
+                          {/* Ajuste a exibição conforme necessário */}
+                          <TableCell>{client.compras ?? '-'}</TableCell>
+                          <TableCell>{client.receita !== null ? client.receita.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
