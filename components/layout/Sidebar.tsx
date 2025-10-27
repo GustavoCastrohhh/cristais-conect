@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Rocket, BarChart3, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { Rocket, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
