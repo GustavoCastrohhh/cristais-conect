@@ -36,8 +36,8 @@ interface ClientHistoryData {
   client_type: string | null;
   campaign_name: string | null;
   // Campos placeholder - precisarão ser buscados de outra fonte ou adicionados
-  // compras: number | null; // Exemplo
-  // receita: number | null; // Exemplo
+  compras: number | null; // Exemplo
+  receita: number | null; // Exemplo
   created_at: string; // Para ordenação ou informação adicional
 }
 
@@ -134,8 +134,8 @@ export default function ClientsPage() {
                         <TableHead>Telefone</TableHead>
                         <TableHead>Tipo</TableHead>
                         <TableHead>Última Campanha</TableHead>
-                        {/* <TableHead>Compras</TableHead> */}
-                        {/* <TableHead>Receita</TableHead> */}
+                        <TableHead>Compras</TableHead>
+                        <TableHead>Receita</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
