@@ -75,7 +75,7 @@ export default function ClientsPage() {
       // Idealmente, seria uma tabela 'clientes' separada ou um join
       const { data, error } = await supabase
         .from('historico_disparos') // Usando histórico por enquanto
-        .select('id, client_name, client_phone, client_type, campaign_name, created_at')
+        .select('id, client_name, client_phone, client_type, campaign_name, compras, receita, created_at')
         .eq('user_phone', userPhoneNumeric)
         .order('client_name', { ascending: true }) // Ordenar por nome de cliente
         .order('created_at', { ascending: false }); // Desempate por data
