@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx'; // Importar a biblioteca xlsx
+// Não importar 'xlsx' diretamente aqui
+// import * as XLSX from 'xlsx';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FileUpload } from '@/components/FileUpload';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -35,7 +36,7 @@ export default function ClientsPage() {
 
     // Função para parsear CSV e XLSX
     const parseFile = (file: File): Promise<ContactRow[]> => {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => { // Tornar async para dynamic import
             const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
             if (fileExtension === 'csv') {
@@ -68,68 +69,75 @@ export default function ClientsPage() {
                     }
                 });
             } else if (fileExtension === 'xlsx') {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const data = event.target?.result;
-                        const workbook = XLSX.read(data, { type: 'binary' });
-                        const sheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[sheetName];
+                try {
+                    // Importar XLSX dinamicamente
+                    const XLSX = await import('xlsx');
+                    const reader = new FileReader();
 
-                        // 1. Ler apenas a primeira linha para obter cabeçalhos brutos
-                        const headerArray = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1, range: 0, defval: "" })[0] || [];
-                         if (headerArray.length === 0) {
-                            reject(new Error('Planilha XLSX vazia ou sem cabeçalho.'));
-                            return;
-                        }
-                        const rawHeaders = headerArray.map(normalizeHeader);
+                    reader.onload = (event) => {
+                        try {
+                            const data = event.target?.result;
+                            const workbook = XLSX.read(data, { type: 'binary' });
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
 
-                         // 2. Validar cabeçalhos essenciais
-                        if (!rawHeaders.includes('client_phone')) {
-                            reject(new Error('Coluna obrigatória "client_phone" não encontrada na planilha XLSX.'));
-                            return;
-                        }
-                        if (!rawHeaders.includes('client_name')) {
-                            reject(new Error('Coluna obrigatória "client_name" não encontrada na planilha XLSX.'));
-                            return;
-                        }
+                            // 1. Ler apenas a primeira linha para obter cabeçalhos brutos
+                            const headerArray = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1, range: 0, defval: "" })[0] || [];
+                             if (headerArray.length === 0) {
+                                reject(new Error('Planilha XLSX vazia ou sem cabeçalho.'));
+                                return;
+                            }
+                            const rawHeaders = headerArray.map(normalizeHeader);
 
-                         // 3. Ler a planilha inteira como objetos, deixando a biblioteca inferir cabeçalhos
-                         const dataObjectsRaw = XLSX.utils.sheet_to_json<any>(worksheet, {
-                             raw: false, // Tenta formatar datas e números
-                             defval: "" // Preenche células vazias
-                         });
+                             // 2. Validar cabeçalhos essenciais
+                            if (!rawHeaders.includes('client_phone')) {
+                                reject(new Error('Coluna obrigatória "client_phone" não encontrada na planilha XLSX.'));
+                                return;
+                            }
+                            if (!rawHeaders.includes('client_name')) {
+                                reject(new Error('Coluna obrigatória "client_name" não encontrada na planilha XLSX.'));
+                                return;
+                            }
 
-                         // 4. Mapear para garantir que as chaves dos objetos correspondam aos cabeçalhos normalizados
-                         const dataObjectsNormalized = dataObjectsRaw.map(row => {
-                             const newRow: Partial<ContactRow> = {};
-                             rawHeaders.forEach((normalizedHeader, index) => {
-                                 // Encontra a chave original correspondente (a que xlsx usou)
-                                 const originalKey = Object.keys(row)[index];
-                                 if (originalKey !== undefined) {
-                                     newRow[normalizedHeader] = row[originalKey];
-                                 }
+                             // 3. Ler a planilha inteira como objetos
+                             const dataObjectsRaw = XLSX.utils.sheet_to_json<any>(worksheet, {
+                                 raw: false,
+                                 defval: ""
                              });
-                              // Garante que as propriedades essenciais existam
-                              if (!('client_name' in newRow)) newRow.client_name = '';
-                              if (!('client_phone' in newRow)) newRow.client_phone = '';
-                             return newRow as ContactRow;
-                         });
 
-                        // 5. Filtrar linhas válidas (com telefone)
-                        const validData = dataObjectsNormalized.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
-                        resolve(validData);
+                             // 4. Mapear para garantir chaves normalizadas
+                             const dataObjectsNormalized = dataObjectsRaw.map(row => {
+                                 const newRow: Partial<ContactRow> = {};
+                                 rawHeaders.forEach((normalizedHeader, index) => {
+                                     const originalKey = Object.keys(row)[index];
+                                     if (originalKey !== undefined) {
+                                         newRow[normalizedHeader] = row[originalKey];
+                                     }
+                                 });
+                                  if (!('client_name' in newRow)) newRow.client_name = '';
+                                  if (!('client_phone' in newRow)) newRow.client_phone = '';
+                                 return newRow as ContactRow;
+                             });
 
-                    } catch (error: any) {
-                        console.error("Erro ao ler XLSX:", error);
-                        reject(new Error(`Erro ao processar arquivo XLSX: ${error.message}`));
-                    }
-                };
-                reader.onerror = (error) => {
-                    console.error("Erro no FileReader:", error);
-                    reject(new Error('Falha ao ler o arquivo XLSX.'));
-                };
-                reader.readAsBinaryString(file);
+                            // 5. Filtrar linhas válidas
+                            const validData = dataObjectsNormalized.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
+                            resolve(validData);
+
+                        } catch (error: any) {
+                            console.error("Erro ao processar XLSX após leitura:", error);
+                            reject(new Error(`Erro ao processar arquivo XLSX: ${error.message}`));
+                        }
+                    };
+                    reader.onerror = (error) => {
+                        console.error("Erro no FileReader:", error);
+                        reject(new Error('Falha ao ler o arquivo XLSX.'));
+                    };
+                    reader.readAsBinaryString(file);
+
+                } catch(importError) {
+                     console.error("Erro ao importar dinamicamente XLSX:", importError);
+                     reject(new Error('Não foi possível carregar o processador de arquivos XLSX.'));
+                }
             } else {
                 reject(new Error('Formato de arquivo inválido. Por favor, envie .csv ou .xlsx'));
             }
@@ -138,10 +146,10 @@ export default function ClientsPage() {
 
     const handleFileSelect = async (file: File | null) => {
         setSelectedFile(file);
-        setParsedData([]); // Limpa dados anteriores
-        setUploadProgress(null); // Reseta progresso
+        setParsedData([]);
+        setUploadProgress(null);
         if (file) {
-            setIsProcessing(true); // Inicia processamento (leitura)
+            setIsProcessing(true);
             try {
                 const data = await parseFile(file);
                 if (data.length === 0) {
@@ -152,9 +160,9 @@ export default function ClientsPage() {
                 setParsedData(data);
             } catch (error: any) {
                 toast.error("Erro ao Ler Planilha", { description: error.message });
-                setSelectedFile(null); // Desseleciona o arquivo em caso de erro
+                setSelectedFile(null);
             } finally {
-                setIsProcessing(false); // Finaliza processamento (leitura)
+                setIsProcessing(false);
             }
         }
     };
@@ -165,15 +173,14 @@ export default function ClientsPage() {
             return;
         }
 
-        setIsProcessing(true); // Inicia processamento (envio)
-        setUploadProgress(0); // Inicia progresso
+        setIsProcessing(true);
+        setUploadProgress(0);
         console.log('Iniciando importação para Supabase:', parsedData);
 
         const contactsToInsert = parsedData.map(contact => ({
             client_name: contact.client_name || null,
-            client_phone: String(contact.client_phone).replace(/\D/g, ''), // Limpa garantindo que é string
-             // Mapear outras colunas normalizadas se existirem na interface ContactRow
-             // variavel_1: contact.variavel_1 || null,
+            client_phone: String(contact.client_phone).replace(/\D/g, ''),
+            // variavel_1: contact.variavel_1 || null,
         }));
 
         const BATCH_SIZE = 100;
@@ -185,18 +192,16 @@ export default function ClientsPage() {
             const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
             const { error } = await supabase
                 .from('clientes')
-                .upsert(batch, { onConflict: 'client_phone' }); // Usar upsert
+                .upsert(batch, { onConflict: 'client_phone' });
 
             if (error) {
                 console.error('Erro ao inserir lote no Supabase:', error);
                 failedInserts += batch.length;
                 errors.push(`Erro no lote ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
-                // Considerar parar em caso de erro dependendo da necessidade
-                // break;
+                // break; // Descomente para parar no primeiro erro
             } else {
                 successfulInserts += batch.length;
             }
-            // Atualiza progresso após cada lote
             setUploadProgress(Math.min(100, Math.round(((i + batch.length) / contactsToInsert.length) * 100)));
         }
 
