@@ -1,9 +1,9 @@
+// /app/clients/page.tsx
 "use client";
 
 import { useState } from 'react';
 import Papa from 'papaparse';
 // Não importar 'xlsx' diretamente aqui
-// import * as XLSX from 'xlsx';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FileUpload } from '@/components/FileUpload';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -12,40 +12,39 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { Download, UploadCloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient'; // Importar supabase
-import { Progress } from '@/components/ui/progress'; // Importar Progress
+import { supabase } from '@/lib/supabaseClient';
+import { Progress } from '@/components/ui/progress';
 
-// Interface para definir a estrutura esperada da linha do CSV/XLSX
 interface ContactRow {
     client_name: string;
-    client_phone: string | number; // Aceita string ou número para flexibilidade
-    // Adicione outros campos se necessário, ex: variavel_1: string;
-    [key: string]: any; // Permite outras colunas
+    client_phone: string | number;
+    [key: string]: any;
+}
+
+// Função para normalizar cabeçalhos (definida antes de ser usada)
+const normalizeHeader = (header: string): string => {
+    return String(header ?? '').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 export default function ClientsPage() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [isProcessing, setIsProcessing] = useState(false); // Estado unificado para leitura e envio
+    const [isProcessing, setIsProcessing] = useState(false);
     const [parsedData, setParsedData] = useState<ContactRow[]>([]);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-    // Função para normalizar cabeçalhos
-    const normalizeHeader = (header: string): string => {
-        return String(header ?? '').trim().toLowerCase().replace(/\s+/g, '_');
-    }
-
-    // Função para parsear CSV e XLSX
+    // Função para parsear CSV e XLSX (usando normalizeHeader)
     const parseFile = (file: File): Promise<ContactRow[]> => {
-        return new Promise(async (resolve, reject) => { // Tornar async para dynamic import
+        return new Promise(async (resolve, reject) => {
             const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
             if (fileExtension === 'csv') {
                 Papa.parse<ContactRow>(file, {
                     header: true,
                     skipEmptyLines: true,
-                    transformHeader: normalizeHeader, // Usa a função de normalização
+                    transformHeader: normalizeHeader, // Usa a função definida acima
                     complete: (results) => {
-                        if (results.errors.length > 0) {
+                        // ... (lógica CSV como antes) ...
+                         if (results.errors.length > 0) {
                             console.error("Erros ao parsear CSV:", results.errors);
                             reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
                         } else {
@@ -70,18 +69,17 @@ export default function ClientsPage() {
                 });
             } else if (fileExtension === 'xlsx') {
                 try {
-                    // Importar XLSX dinamicamente
                     const XLSX = await import('xlsx');
                     const reader = new FileReader();
 
                     reader.onload = (event) => {
                         try {
+                            // ... (lógica XLSX como antes, usando normalizeHeader) ...
                             const data = event.target?.result;
                             const workbook = XLSX.read(data, { type: 'binary' });
                             const sheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[sheetName];
 
-                            // 1. Ler apenas a primeira linha para obter cabeçalhos brutos
                             const headerArray = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1, range: 0, defval: "" })[0] || [];
                              if (headerArray.length === 0) {
                                 reject(new Error('Planilha XLSX vazia ou sem cabeçalho.'));
@@ -89,7 +87,6 @@ export default function ClientsPage() {
                             }
                             const rawHeaders = headerArray.map(normalizeHeader);
 
-                             // 2. Validar cabeçalhos essenciais
                             if (!rawHeaders.includes('client_phone')) {
                                 reject(new Error('Coluna obrigatória "client_phone" não encontrada na planilha XLSX.'));
                                 return;
@@ -99,13 +96,11 @@ export default function ClientsPage() {
                                 return;
                             }
 
-                             // 3. Ler a planilha inteira como objetos
                              const dataObjectsRaw = XLSX.utils.sheet_to_json<any>(worksheet, {
                                  raw: false,
                                  defval: ""
                              });
 
-                             // 4. Mapear para garantir chaves normalizadas
                              const dataObjectsNormalized = dataObjectsRaw.map(row => {
                                  const newRow: Partial<ContactRow> = {};
                                  rawHeaders.forEach((normalizedHeader, index) => {
@@ -119,7 +114,6 @@ export default function ClientsPage() {
                                  return newRow as ContactRow;
                              });
 
-                            // 5. Filtrar linhas válidas
                             const validData = dataObjectsNormalized.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
                             resolve(validData);
 
@@ -145,6 +139,7 @@ export default function ClientsPage() {
     };
 
     const handleFileSelect = async (file: File | null) => {
+        // ... (resto da função como antes) ...
         setSelectedFile(file);
         setParsedData([]);
         setUploadProgress(null);
@@ -168,6 +163,7 @@ export default function ClientsPage() {
     };
 
     const handleImportContacts = async () => {
+        // ... (resto da função como antes) ...
         if (!parsedData || parsedData.length === 0) {
             toast.error('Nenhum contato válido para importar', { description: 'Selecione um arquivo .csv ou .xlsx válido com a coluna "client_phone".' });
             return;
@@ -222,7 +218,8 @@ export default function ClientsPage() {
         setTimeout(() => setUploadProgress(null), 1500);
     };
 
-    return (
+    // ... (resto do JSX como antes) ...
+     return (
         <ProtectedRoute>
             <AppLayout>
                 <div className="max-w-4xl mx-auto space-y-6">
