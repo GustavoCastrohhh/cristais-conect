@@ -1,8 +1,8 @@
 "use client";
 
 import Link from 'next/link';
+import { Rocket, BarChart3, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { Rocket, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -15,6 +15,11 @@ const navItems = [
     title: 'Relatórios',
     href: '/reports',
     icon: BarChart3,
+  },
+  {
+    title: 'Clientes', // Novo item
+    href: '/clients', // Nova rota
+    icon: Users,      // Novo ícone
   },
 ];
 
