@@ -42,8 +42,7 @@ interface ClientFromDB {
 // Interface para dados do CSV (usada no handleAddContacts) - ATUALIZADA
 interface ClientFromCSV {
     client_name: string | null;
-    client: string | null; // Novo
-    doc: string | null; // Novo
+    client_doc: string | null; // Novo
     client_phone: string | null; // Alterado para string | null
     client_email: string | null; // Novo
     client_type: string | null; // Novo
@@ -142,7 +141,7 @@ export default function Home() {
             const headers = results.meta.fields || [];
 
             // Validações de colunas obrigatórias
-            const requiredColumns = ['client_name', 'client', 'doc', 'client_phone', 'client_email', 'client_type'];
+            const requiredColumns = ['client_name', 'client_doc', 'client_phone', 'client_email', 'client_type'];
             const missingColumns = requiredColumns.filter(col => !headers.includes(col));
 
             if (missingColumns.length > 0) {
@@ -155,8 +154,7 @@ export default function Home() {
               .filter(row => row.client_phone && String(row.client_phone).trim() !== '') // Mantém filtro por telefone não vazio
               .map(row => ({
                   client_name: String(row.client_name || '').trim() || null,
-                  client: String(row.client || '').trim() || null, // Novo
-                  doc: String(row.doc || '').trim() || null, // Novo
+                  client_doc: String(row.client_doc || '').trim() || null, // Novo
                   client_phone: String(row.client_phone).trim() || null, // Garante que é string ou null
                   client_email: String(row.client_email || '').trim() || null, // Novo
                   client_type: String(row.client_type || '').trim() || null, // Novo
