@@ -343,7 +343,7 @@ export default function Home() {
           <Card>
             <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                   <span>1. Carregar Lista (Opcional)</span>
+                   <span>1. Carregar Lista (Etapa Opcional)</span>
                     {selectedFile && (
                         <Button variant="ghost" size="sm" onClick={clearSelectedFile} className="text-destructive hover:text-destructive/80">
                             <Trash2 className="h-4 w-4 mr-1"/> Remover Arquivo
@@ -371,7 +371,7 @@ export default function Home() {
                     <p className="text-sm text-center text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
                  )}
                  <p className="text-xs text-center text-muted-foreground mt-4">
-                    O público para envio será selecionado do banco de dados na próxima etapa. O upload é apenas para referência ou futuras implementações.
+                    O público para envio será selecionado do banco de dados na próxima etapa.
                  </p>
             </CardContent>
           </Card>
@@ -379,7 +379,7 @@ export default function Home() {
          {/* Etapa 2: Selecionar Público do Banco (Obrigatório) */}
           <Card>
               <CardHeader>
-                  <CardTitle>2. Escolher Público do Banco (Obrigatório)</CardTitle>
+                  <CardTitle>2. Escolher Público</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                  <Label htmlFor="client-type-select">Público da Campanha</Label>
@@ -422,7 +422,7 @@ export default function Home() {
                <CardContent className="space-y-4">
                   {/* Nome da Campanha */}
                   <div className="space-y-2">
-                    <Label htmlFor="campaignName">Nome da Campanha (Obrigatório)</Label>
+                    <Label htmlFor="campaignName">Nome da Campanha</Label>
                     <Input
                       id="campaignName"
                       placeholder="Ex: Promoção Dia dos Pais"
@@ -437,7 +437,7 @@ export default function Home() {
 
                   {/* Mensagem */}
                   <div className="space-y-2">
-                    <Label htmlFor="message">Mensagem (Obrigatório)</Label>
+                    <Label htmlFor="message">Mensagem</Label>
                     <div className="flex gap-2 mb-2 flex-wrap">
                       <Button
                         type="button"

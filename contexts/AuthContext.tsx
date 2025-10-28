@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = !!user;
 
   return (
-  <AuthContext.Provider value={{ isAuthenticated, user, session, login, logout, isLoading, isAdmin }}> // NOVO: Passar isAdmin no value
+  <AuthContext.Provider value={{ isAuthenticated, user, session, login, logout, isLoading, isAdmin }}>
     {!isLoading && children}
   </AuthContext.Provider>
 );
