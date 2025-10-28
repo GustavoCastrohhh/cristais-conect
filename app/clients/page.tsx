@@ -72,20 +72,17 @@ export default function ClientsPage() {
             const workbook = XLSX.read(data, { type: 'binary' });
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json<ContactRow>(worksheet, { header: 1 }); // Ler como array de arrays
+            // Ler a primeira linha como array para pegar os headers crus
+            const jsonDataHeaders = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: "" }); // Adicionado defval
 
-            if (!jsonData || jsonData.length < 1) {
+            if (!jsonDataHeaders || jsonDataHeaders.length < 1) {
                 reject(new Error('Planilha XLSX vazia ou inválida.'));
                 return;
             }
 
             // Normalizar cabeçalhos da primeira linha
-            const rawHeaders = (jsonData[0] as string[]).map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
-            const headerMap: { [key: string]: string } = {};
-            rawHeaders.forEach((header, index) => {
-                headerMap[header] = String.fromCharCode(65 + index); // Mapeia header para coluna (A, B, ...)
-            });
-
+            // CORREÇÃO APLICADA AQUI: Tipar jsonDataHeaders[0] como any[] ou unknown[]
+            const rawHeaders = (jsonDataHeaders[0] as any[]).map(h => String(h ?? '').trim().toLowerCase().replace(/\s+/g, '_'));
 
             if (!rawHeaders.includes('client_phone')) {
                 reject(new Error('Coluna "client_phone" (ou similar) não encontrada na planilha XLSX.'));
@@ -96,11 +93,27 @@ export default function ClientsPage() {
                 return;
             }
 
-            // Converter para array de objetos usando os cabeçalhos normalizados
+            // Agora, converter para array de objetos usando os cabeçalhos normalizados
+            // sheet_to_json sem header: 1 usará a primeira linha como cabeçalho automaticamente
              const dataObjects = XLSX.utils.sheet_to_json<ContactRow>(worksheet, {
                 raw: false, // Tenta formatar datas e números
-                header: rawHeaders // Usa os cabeçalhos normalizados
-             });
+                // Não precisa mais especificar 'header' aqui, pois ele pega a primeira linha por padrão
+                defval: "" // Preenche células vazias com string vazia
+             }).map(row => {
+                // Remapeia as chaves do objeto para o formato normalizado, caso o sheet_to_json não tenha pego corretamente
+                const newRow: Partial<ContactRow> = {};
+                for (const rawHeader of rawHeaders) {
+                    // Encontra a chave original correspondente (case-insensitive e com espaços)
+                    const originalKey = Object.keys(row).find(k => k.trim().toLowerCase().replace(/\s+/g, '_') === rawHeader);
+                    if (originalKey) {
+                        (newRow as any)[rawHeader] = (row as any)[originalKey];
+                    }
+                }
+                 // Garante que as propriedades essenciais existam, mesmo que vazias
+                 if (!('client_name' in newRow)) newRow.client_name = '';
+                 if (!('client_phone' in newRow)) newRow.client_phone = '';
+                return newRow as ContactRow;
+            });
 
 
             // Filtrar linhas válidas (com telefone)
@@ -172,12 +185,12 @@ export default function ClientsPage() {
         const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
         const { error } = await supabase
             .from('clientes') // Certifique-se que o nome da tabela está correto
-            .insert(batch, { upsert: true, onConflict: 'client_phone' }); // Usar upsert para evitar duplicados pelo telefone
+            .upsert(batch, { onConflict: 'client_phone' }); // Usar upsert para evitar duplicados pelo telefone
 
         if (error) {
             console.error('Erro ao inserir lote no Supabase:', error);
             failedInserts += batch.length;
-            errors.push(`Erro no lote ${i / BATCH_SIZE + 1}: ${error.message}`);
+            errors.push(`Erro no lote ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
             // Decide se quer parar ou continuar em caso de erro no lote
             // break; // Para parar
         } else {
