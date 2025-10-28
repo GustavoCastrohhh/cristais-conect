@@ -1,201 +1,275 @@
-// Linha 1: Adiciona a diretiva "use client"
+// /app/clients/page.tsx
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx'; // Importar a biblioteca xlsx
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { FileUpload } from '@/components/FileUpload';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { supabase } from '@/lib/supabaseClient';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/badge'; // Para exibir o tipo de cliente
+import { toast } from 'sonner';
+import Link from 'next/link';
+import { Download, UploadCloud } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient'; // Importar supabase
+import { Progress } from '@/components/ui/progress'; // Importar Progress
 
-const ITEMS_PER_PAGE = 15;
-
-// Interface para os dados que esperamos da tabela (ajuste conforme necessário)
-interface ClientHistoryData {
-  id: string | number;
-  client_name: string | null;
-  client_phone: number | null;
-  client_type: string | null;
-  campaign_name: string | null;
-  // Campos placeholder - precisarão ser buscados de outra fonte ou adicionados
-  compras: number | null; // Exemplo
-  receita: number | null; // Exemplo
-  created_at: string; // Para ordenação ou informação adicional
+// Interface para definir a estrutura esperada da linha do CSV/XLSX
+interface ContactRow {
+    client_name: string;
+    client_phone: string | number; // Aceita string ou número para flexibilidade
+    // Adicione outros campos se necessário, ex: variavel_1: string;
 }
 
 export default function ClientsPage() {
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const [clientData, setClientData] = useState<ClientHistoryData[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false); // Estado unificado para leitura e envio
+  const [parsedData, setParsedData] = useState<ContactRow[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (isAuthLoading) return;
+  // Função para parsear CSV e XLSX
+  const parseFile = (file: File): Promise<ContactRow[]> => {
+    return new Promise((resolve, reject) => {
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
-    const userPhoneString = user?.user_metadata?.phone as string | undefined;
+      if (fileExtension === 'csv') {
+        Papa.parse<ContactRow>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'), // Normaliza cabeçalhos
+          complete: (results) => {
+            if (results.errors.length > 0) {
+              console.error("Erros ao parsear CSV:", results.errors);
+              reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
+            } else {
+              const data = results.data;
+              // Validar cabeçalhos essenciais
+              const headers = results.meta.fields?.map(h => h.trim().toLowerCase().replace(/\s+/g, '_')) || [];
+              if (!headers.includes('client_phone')) {
+                reject(new Error('Coluna "client_phone" (ou similar) não encontrada na planilha.'));
+                return;
+              }
+              if (!headers.includes('client_name')) {
+                  reject(new Error('Coluna "client_name" (ou similar) não encontrada na planilha.'));
+                  return;
+              }
+              // Filtrar linhas válidas (com telefone)
+              const validData = data.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
+              resolve(validData);
+            }
+          },
+          error: (error: any) => {
+            console.error("Erro no Papaparse:", error);
+            reject(new Error(`Não foi possível ler o arquivo CSV: ${error.message}`));
+          }
+        });
+      } else if (fileExtension === 'xlsx') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = event.target?.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json<ContactRow>(worksheet, { header: 1 }); // Ler como array de arrays
 
-    if (!user || !userPhoneString) {
-      console.warn('Usuário não autenticado ou sem telefone para buscar clientes.');
-      setClientData([]);
-      setIsLoadingData(false);
-      return;
-    }
+            if (!jsonData || jsonData.length < 1) {
+                reject(new Error('Planilha XLSX vazia ou inválida.'));
+                return;
+            }
 
-    const userPhoneNumeric = parseInt(userPhoneString.replace(/\D/g, ''), 10);
-    if (isNaN(userPhoneNumeric)) {
-      console.error('Número de telefone nos metadados do usuário inválido:', userPhoneString);
-      setClientData([]);
-      setIsLoadingData(false);
-      return;
-    }
+            // Normalizar cabeçalhos da primeira linha
+            const rawHeaders = (jsonData[0] as string[]).map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+            const headerMap: { [key: string]: string } = {};
+            rawHeaders.forEach((header, index) => {
+                headerMap[header] = String.fromCharCode(65 + index); // Mapeia header para coluna (A, B, ...)
+            });
 
-    async function loadClientData() {
-      setIsLoadingData(true);
-      console.log(`Buscando dados de clientes para o usuário com telefone (metadata): ${userPhoneNumeric}...`);
 
-      // Busca da tabela de histórico, selecionando campos relevantes
-      // Idealmente, seria uma tabela 'clientes' separada ou um join
-      const { data, error } = await supabase
-        .from('historico_disparos') // Usando histórico por enquanto
-        .select('id, client_name, client_phone, client_type, campaign_name, compras, receita, created_at')
-        .eq('user_phone', userPhoneNumeric)
-        .order('client_name', { ascending: true }) // Ordenar por nome de cliente
-        .order('created_at', { ascending: false }); // Desempate por data
+            if (!rawHeaders.includes('client_phone')) {
+                reject(new Error('Coluna "client_phone" (ou similar) não encontrada na planilha XLSX.'));
+                return;
+            }
+             if (!rawHeaders.includes('client_name')) {
+                reject(new Error('Coluna "client_name" (ou similar) não encontrada na planilha XLSX.'));
+                return;
+            }
 
-      if (error) {
-        console.error('Erro ao buscar dados do Supabase:', error.message);
-        setClientData([]);
-      } else if (data) {
-        console.log('Dados recebidos:', data);
-        // Poderia haver um processamento aqui para agrupar por cliente,
-        // mas por simplicidade, vamos exibir cada entrada do histórico.
-        setClientData(data as ClientHistoryData[]);
+            // Converter para array de objetos usando os cabeçalhos normalizados
+             const dataObjects = XLSX.utils.sheet_to_json<ContactRow>(worksheet, {
+                raw: false, // Tenta formatar datas e números
+                header: rawHeaders // Usa os cabeçalhos normalizados
+             });
+
+
+            // Filtrar linhas válidas (com telefone)
+            const validData = dataObjects.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
+            resolve(validData);
+          } catch (error: any) {
+            console.error("Erro ao ler XLSX:", error);
+            reject(new Error(`Erro ao processar arquivo XLSX: ${error.message}`));
+          }
+        };
+        reader.onerror = (error) => {
+          console.error("Erro no FileReader:", error);
+          reject(new Error('Falha ao ler o arquivo XLSX.'));
+        };
+        reader.readAsBinaryString(file);
       } else {
-        setClientData([]);
+        reject(new Error('Formato de arquivo inválido. Por favor, envie .csv ou .xlsx'));
       }
+    });
+  };
 
-      setIsLoadingData(false);
+  const handleFileSelect = async (file: File | null) => {
+    setSelectedFile(file);
+    setParsedData([]); // Limpa dados anteriores
+    setUploadProgress(null); // Reseta progresso
+    if (file) {
+      setIsProcessing(true); // Inicia processamento (leitura)
+      try {
+        const data = await parseFile(file);
+        if (data.length === 0) {
+          toast.warning("Planilha lida", { description: "Nenhum contato com telefone válido encontrado." });
+        } else {
+          toast.info("Planilha Pronta", { description: `${data.length} contatos válidos encontrados. Clique em "Importar Contatos" para salvá-los.` });
+        }
+        setParsedData(data);
+      } catch (error: any) {
+        toast.error("Erro ao Ler Planilha", { description: error.message });
+        setSelectedFile(null); // Desseleciona o arquivo em caso de erro
+      } finally {
+        setIsProcessing(false); // Finaliza processamento (leitura)
+      }
+    }
+  };
+
+  const handleImportContacts = async () => {
+    if (!parsedData || parsedData.length === 0) {
+      toast.error('Nenhum contato válido para importar', { description: 'Selecione um arquivo .csv ou .xlsx válido com a coluna "client_phone".' });
+      return;
     }
 
-    loadClientData();
-  }, [user, isAuthLoading]);
+    setIsProcessing(true); // Inicia processamento (envio)
+    setUploadProgress(0); // Inicia progresso
+    console.log('Iniciando importação para Supabase:', parsedData);
 
-  const totalPages = Math.ceil(clientData.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentData = clientData.slice(startIndex, endIndex);
+    const contactsToInsert = parsedData.map(contact => ({
+      client_name: contact.client_name || null, // Garante null se não houver nome
+      client_phone: String(contact.client_phone).replace(/\D/g, ''), // Limpa e converte para string
+      // Adicione outros campos aqui se necessário
+      // variavel_1: contact.variavel_1 || null,
+    }));
 
-  const showLoadingState = isLoadingData || isAuthLoading;
+    // Inserir em lotes para evitar sobrecarga (opcional, mas bom para muitos contatos)
+    const BATCH_SIZE = 100;
+    let successfulInserts = 0;
+    let failedInserts = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < contactsToInsert.length; i += BATCH_SIZE) {
+        const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
+        const { error } = await supabase
+            .from('clientes') // Certifique-se que o nome da tabela está correto
+            .insert(batch, { upsert: true, onConflict: 'client_phone' }); // Usar upsert para evitar duplicados pelo telefone
+
+        if (error) {
+            console.error('Erro ao inserir lote no Supabase:', error);
+            failedInserts += batch.length;
+            errors.push(`Erro no lote ${i / BATCH_SIZE + 1}: ${error.message}`);
+            // Decide se quer parar ou continuar em caso de erro no lote
+            // break; // Para parar
+        } else {
+             successfulInserts += batch.length;
+        }
+         setUploadProgress(Math.round(((i + batch.length) / contactsToInsert.length) * 100));
+    }
+
+
+     setUploadProgress(100); // Garante 100% no final
+
+
+    if (failedInserts > 0) {
+        toast.error(`Falha ao importar ${failedInserts} contatos`, {
+            description: ` ${successfulInserts} importados com sucesso. Erros: ${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '...' : ''}`,
+            duration: 10000 // Aumenta duração para ler erro
+        });
+    } else {
+        toast.success('Importação Concluída!', {
+            description: `${successfulInserts} contatos foram importados com sucesso.`,
+        });
+    }
+
+    // Limpar estado após a importação
+    setSelectedFile(null);
+    setParsedData([]);
+    setIsProcessing(false); // Finaliza processamento (envio)
+     setTimeout(() => setUploadProgress(null), 1500); // Limpa barra de progresso após um tempo
+  };
 
   return (
     <ProtectedRoute>
       <AppLayout>
-        <div className="space-y-6">
-          <h1 className="text-3xl font-bold">Clientes</h1>
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h1 className="text-3xl font-bold">Gerenciar Clientes</h1>
+            <div className="flex gap-2 flex-wrap">
+                {/* Botão Importar Contatos */}
+                <Button onClick={handleImportContacts} disabled={isProcessing || parsedData.length === 0}>
+                   {isProcessing && uploadProgress !== null ? `Importando... ${uploadProgress}%` : (
+                       <>
+                         <UploadCloud className="mr-2 h-4 w-4" />
+                         Importar Contatos ({parsedData.length})
+                       </>
+                   )}
+                </Button>
+                 {/* Botão Baixar Modelo */}
+                <Link
+                    href="/planilha-modelo.csv" // Garanta que o arquivo está na pasta public
+                    download
+                    className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "gap-2"
+                    )}
+                >
+                    <Download className="h-4 w-4" />
+                    Baixar Modelo CSV
+                </Link>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Lista de Clientes</CardTitle>
-              {/* Adicionar filtros aqui futuramente, se necessário */}
-            </CardHeader>
-            <CardContent>
-              {showLoadingState ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : clientData.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">Nenhum cliente encontrado.</div>
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Última Campanha</TableHead>
-                        <TableHead>Compras</TableHead>
-                        <TableHead>Receita</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {currentData.map((client) => (
-                        <TableRow key={client.id}>
-                          <TableCell className="font-medium">{client.client_name || '-'}</TableCell>
-                          <TableCell>{client.client_phone || '-'}</TableCell>
-                          <TableCell>
-                            {client.client_type ? <Badge variant="secondary">{client.client_type}</Badge> : '-'}
-                          </TableCell>
-                          <TableCell>{client.campaign_name || '-'}</TableCell>
-                          {/* Ajuste a exibição conforme necessário */}
-                          <TableCell>{client.compras ?? '-'}</TableCell>
-                          <TableCell>{client.receita !== null ? client.receita.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+          </div>
 
-                  {/* Paginação */}
-                  {totalPages > 1 && (
-                    <div className="mt-4">
-                      <Pagination>
-                        <PaginationContent>
-                          <PaginationItem>
-                            <PaginationPrevious
-                              href="#"
-                              onClick={(e) => { e.preventDefault(); if (currentPage > 1) setCurrentPage(currentPage - 1); }}
-                              aria-disabled={currentPage <= 1}
-                              tabIndex={currentPage <= 1 ? -1 : undefined}
-                              className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                            />
-                          </PaginationItem>
-                          {/* Lógica simplificada de exibição de páginas */}
-                           <PaginationItem>
-                            <PaginationLink isActive>
-                              {currentPage}
-                            </PaginationLink>
-                          </PaginationItem>
-                           <PaginationItem>
-                            <span className="px-2 text-sm text-muted-foreground">de {totalPages}</span>
-                          </PaginationItem>
-                          {/* Adicionar lógica de "..." se houver muitas páginas */}
-                          <PaginationItem>
-                            <PaginationNext
-                              href="#"
-                              onClick={(e) => { e.preventDefault(); if (currentPage < totalPages) setCurrentPage(currentPage + 1); }}
-                              aria-disabled={currentPage >= totalPages}
-                              tabIndex={currentPage >= totalPages ? -1 : undefined}
-                              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-                            />
-                          </PaginationItem>
-                        </PaginationContent>
-                      </Pagination>
-                    </div>
-                  )}
-                </>
+          {/* Progresso da Importação */}
+          {isProcessing && uploadProgress !== null && (
+               <Progress value={uploadProgress} className="w-full h-2 mt-2" />
+           )}
+
+
+          {/* Seção Upload */}
+          <div className="space-y-2 pt-4">
+            <h2 className="text-xl font-semibold">Importar Nova Lista</h2>
+            <FileUpload onFileSelect={handleFileSelect} selectedFile={selectedFile} />
+             {isProcessing && uploadProgress === null && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
+             {parsedData.length > 0 && !isProcessing && (
+                 <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados. Clique em "Importar Contatos" para salvar.</p>
+             )}
+              {selectedFile && parsedData.length === 0 && !isProcessing && (
+                  <p className="text-sm text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
               )}
-            </CardContent>
-          </Card>
+               <p className="text-xs text-muted-foreground mt-1">
+                 A planilha deve conter as colunas obrigatórias: <strong>client_name</strong> e <strong>client_phone</strong>. Outras colunas podem ser adicionadas para variáveis.
+               </p>
+          </div>
+
+          {/* TODO: Adicionar aqui a listagem/gerenciamento de clientes existentes */}
+           <div className="border-t pt-6 mt-6">
+               <h2 className="text-xl font-semibold mb-4">Clientes Cadastrados</h2>
+               <div className="border border-dashed p-8 text-center text-muted-foreground">
+                   (Listagem de clientes será implementada aqui)
+               </div>
+           </div>
+
         </div>
       </AppLayout>
     </ProtectedRoute>
