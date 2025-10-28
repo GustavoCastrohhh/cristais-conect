@@ -39,11 +39,14 @@ interface ClientFromDB {
     client_phone: number | null;
 }
 
-// Interface para dados do CSV (usada no handleAddContacts)
+// Interface para dados do CSV (usada no handleAddContacts) - ATUALIZADA
 interface ClientFromCSV {
     client_name: string | null;
-    client_phone: string | number | null; // Pode vir como string do CSV
-    // Adicionar outros campos do CSV se houver
+    client: string | null; // Novo
+    doc: string | null; // Novo
+    client_phone: string | null; // Alterado para string | null
+    client_email: string | null; // Novo
+    client_type: string | null; // Novo
 }
 
 
@@ -119,7 +122,7 @@ export default function Home() {
     setIsCountingContacts(false);
   }
 
-  // --- Função parseFile ---
+  // --- Função parseFile --- ATUALIZADA
   const parseFile = (file: File): Promise<ClientFromCSV[]> => { // Retorna ClientFromCSV[]
      return new Promise((resolve, reject) => {
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
@@ -136,22 +139,27 @@ export default function Home() {
             reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
           } else {
             const data = results.data as any[]; // PapaParse retorna 'any[]'
-            // Validações de colunas
-            if (!results.meta.fields?.includes('client_phone')) {
-              reject(new Error('Coluna "client_phone" não encontrada na planilha.'));
+            const headers = results.meta.fields || [];
+
+            // Validações de colunas obrigatórias
+            const requiredColumns = ['client_name', 'client', 'doc', 'client_phone', 'client_email', 'client_type'];
+            const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+
+            if (missingColumns.length > 0) {
+              reject(new Error(`Coluna(s) obrigatória(s) não encontrada(s) na planilha: ${missingColumns.join(', ')}.`));
               return;
             }
-            if (!results.meta.fields?.includes('client_name')) {
-                reject(new Error('Coluna "client_name" não encontrada na planilha.'));
-                return;
-            }
+
             // Filtra e mapeia para a interface ClientFromCSV
             const validData: ClientFromCSV[] = data
-              .filter(row => row.client_phone && String(row.client_phone).trim() !== '')
+              .filter(row => row.client_phone && String(row.client_phone).trim() !== '') // Mantém filtro por telefone não vazio
               .map(row => ({
-                  client_name: row.client_name || null,
-                  client_phone: String(row.client_phone).trim() // Garante que é string
-                  // Mapear outros campos se necessário
+                  client_name: String(row.client_name || '').trim() || null,
+                  client: String(row.client || '').trim() || null, // Novo
+                  doc: String(row.doc || '').trim() || null, // Novo
+                  client_phone: String(row.client_phone).trim() || null, // Garante que é string ou null
+                  client_email: String(row.client_email || '').trim() || null, // Novo
+                  client_type: String(row.client_type || '').trim() || null, // Novo
               }));
             resolve(validData);
           }
@@ -170,7 +178,7 @@ export default function Home() {
     if (file) {
       setIsReadingFile(true);
       try {
-        const data = await parseFile(file);
+        const data = await parseFile(file); // Usa a função parseFile atualizada
         if (data.length === 0) {
             toast.warning("Planilha lida", { description: "Nenhum contato com telefone válido encontrado."});
         }
@@ -178,12 +186,13 @@ export default function Home() {
         toast.info("Planilha Carregada", { description: `${data.length} contatos válidos encontrados na planilha.` });
       } catch (error: any) {
         toast.error("Erro ao Ler Planilha", { description: error.message });
-        setSelectedFile(null);
+        setSelectedFile(null); // Limpa o arquivo selecionado em caso de erro
       } finally {
         setIsReadingFile(false);
       }
     }
   };
+
 
   const clearSelectedFile = () => {
     setSelectedFile(null);
@@ -212,7 +221,7 @@ export default function Home() {
         const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta'; // Mesma URL
         const payload = {
           action: "novos contatos", // Identificador
-          contacts: parsedData,     // Dados parseados do CSV
+          contacts: parsedData,     // Dados parseados do CSV (agora com todos os campos)
           senderInfo: userInfo
         };
 
@@ -253,8 +262,8 @@ export default function Home() {
   // --- FIM handleAddContacts ---
 
   const handleStartCampaign = async () => {
+    // Lógica inalterada aqui
     if (!selectedClientType || !campaignName.trim() || !message.trim()) {
-       // A validação já ocorreu, mas é uma segurança extra
        setShowConfirmDialog(false);
        return;
     }
@@ -339,6 +348,7 @@ export default function Home() {
   };
 
   const handleConfirmClick = () => {
+    // Lógica inalterada aqui
     if (!selectedClientType) {
         toast.error('Erro', { description: 'Por favor, selecione um tipo de público do banco.' });
         return;
@@ -367,6 +377,7 @@ export default function Home() {
   };
 
   const getConfirmationDetails = () => {
+    // Lógica inalterada aqui
      if (selectedClientType) {
          return {
              count: dbContactsCountMap[selectedClientType] ?? 0,
@@ -377,6 +388,7 @@ export default function Home() {
   };
   const { count: confirmationCount, source: confirmationSource } = getConfirmationDetails();
 
+  // JSX inalterado a partir daqui
   return (
     <ProtectedRoute>
       <AppLayout>
