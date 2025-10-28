@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react'; // Adicionado useEffect
+import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -22,17 +22,18 @@ import {
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Link from 'next/link';
-import { Download, Database, Upload } from 'lucide-react'; // Adicionado Database, Upload
+import { Download, Database, Upload, Trash2 } from 'lucide-react'; // Adicionado Trash2
 import { cn } from '@/lib/utils';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Adicionado
+// Removido RadioGroup
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // Adicionado
-import { supabase } from '@/lib/supabaseClient'; // Adicionado
+} from "@/components/ui/select";
+import { supabase } from '@/lib/supabaseClient';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface ClientFromDB {
     client_name: string | null;
@@ -41,101 +42,80 @@ interface ClientFromDB {
 
 export default function Home() {
   const { user } = useAuth();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Mantido para upload opcional
   const [campaignName, setCampaignName] = useState('');
   const [message, setMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isReadingFile, setIsReadingFile] = useState(false);
-  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [isReadingFile, setIsReadingFile] = useState(false); // Mantido para feedback do upload
+  const [parsedData, setParsedData] = useState<any[]>([]); // Mantido para feedback do upload
 
-  // Novos Estados
-  const [campaignType, setCampaignType] = useState<'upload' | 'database'>('upload');
+  // Estados para seleção de público do DB (agora obrigatório)
   const [clientTypes, setClientTypes] = useState<string[]>([]);
-  const [selectedClientType, setSelectedClientType] = useState<string>('');
+  const [selectedClientType, setSelectedClientType] = useState<string>(''); // Este é o público selecionado
   const [isLoadingClientTypes, setIsLoadingClientTypes] = useState(false);
-  const [dbContactsCount, setDbContactsCount] = useState<number | null>(null); // Contagem de contatos do DB
-  const [isCountingContacts, setIsCountingContacts] = useState(false); // Loading da contagem
+  const [dbContactsCountMap, setDbContactsCountMap] = useState<Record<string, number | null>>({});
+  const [isCountingContacts, setIsCountingContacts] = useState(false);
 
   const insertVariable = (variable: string) => {
     setMessage((prev) => prev + variable);
   };
 
-  // Buscar tipos de cliente do banco de dados
+  // Buscar tipos de cliente do banco de dados (sem alterações na lógica interna)
   useEffect(() => {
     async function fetchClientTypes() {
       if (!user || !user.user_metadata?.phone) return;
-
       setIsLoadingClientTypes(true);
       const userPhoneNumeric = parseInt(String(user.user_metadata.phone).replace(/\D/g, ''), 10);
-
       if (isNaN(userPhoneNumeric)) {
-          console.error("Telefone do usuário inválido.");
-          setIsLoadingClientTypes(false);
-          return;
+        console.error("Telefone do usuário inválido.");
+        setIsLoadingClientTypes(false);
+        return;
       }
-
-      // IMPORTANTE: Substitua 'clientes' pelo nome real da sua tabela de clientes
       const { data, error } = await supabase
-        .from('historico_disparos') // <-- VERIFIQUE O NOME DA TABELA
+        .from('historico_disparos')
         .select('client_type', { count: 'exact', head: false })
         .eq('user_phone', userPhoneNumeric)
-        .not('client_type', 'is', null); // Garante que não busca tipos nulos
+        .not('client_type', 'is', null);
 
       if (error) {
         console.error("Erro ao buscar tipos de cliente:", error.message);
-        toast.error("Erro ao carregar tipos", { description: "Não foi possível buscar os tipos de público do banco." });
+        toast.error("Erro ao carregar tipos", { description: "Não foi possível buscar os tipos de público." });
       } else if (data) {
-        // Extrai os tipos únicos e não nulos
         const uniqueTypes = Array.from(new Set(data.map(item => item.client_type).filter(type => type !== null))) as string[];
         setClientTypes(uniqueTypes.sort());
+        countContactsForTypes(uniqueTypes, userPhoneNumeric); // Dispara contagem
       }
       setIsLoadingClientTypes(false);
     }
-
     fetchClientTypes();
   }, [user]);
 
-   // Efeito para contar contatos quando o tipo de cliente selecionado muda
-  useEffect(() => {
-    async function countContacts() {
-      if (campaignType !== 'database' || !selectedClientType || !user || !user.user_metadata?.phone) {
-        setDbContactsCount(null);
-        return;
-      }
-
-      setIsCountingContacts(true);
-      const userPhoneNumeric = parseInt(String(user.user_metadata.phone).replace(/\D/g, ''), 10);
-       if (isNaN(userPhoneNumeric)) {
-           console.error("Telefone do usuário inválido para contagem.");
-           setIsCountingContacts(false);
-           setDbContactsCount(null);
-           return;
-       }
-
-      // IMPORTANTE: Substitua 'clientes' pelo nome real da sua tabela de clientes
+  // Função para contar contatos para múltiplos tipos (sem alterações)
+  async function countContactsForTypes(types: string[], userPhoneNumeric: number) {
+    if (types.length === 0 || isNaN(userPhoneNumeric)) return;
+    setIsCountingContacts(true);
+    const counts: Record<string, number | null> = {};
+    const promises = types.map(async (type) => {
       const { count, error } = await supabase
-        .from('historico_disparos') // <-- VERIFIQUE O NOME DA TABELA
+        .from('historico_disparos')
         .select('*', { count: 'exact', head: true })
         .eq('user_phone', userPhoneNumeric)
-        .eq('client_type', selectedClientType);
-
+        .eq('client_type', type);
       if (error) {
-        console.error("Erro ao contar contatos:", error.message);
-        toast.error("Erro", { description: "Não foi possível contar os contatos para este tipo." });
-        setDbContactsCount(null);
+        console.error(`Erro ao contar contatos para ${type}:`, error.message);
+        counts[type] = null;
       } else {
-        setDbContactsCount(count ?? 0);
+        counts[type] = count ?? 0;
       }
-      setIsCountingContacts(false);
-    }
+    });
+    await Promise.all(promises);
+    setDbContactsCountMap(counts);
+    setIsCountingContacts(false);
+  }
 
-    countContacts();
-  }, [selectedClientType, campaignType, user]);
-
-
+  // Função parseFile mantida (para upload opcional)
   const parseFile = (file: File): Promise<any[]> => {
-    // ... (função parseFile existente - sem alterações) ...
      return new Promise((resolve, reject) => {
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'csv') {
@@ -151,7 +131,6 @@ export default function Home() {
             reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
           } else {
             const data = results.data as any[];
-            // Ajustado para usar client_phone e client_name como no page.tsx original
             if (!results.meta.fields?.includes('client_phone')) {
               reject(new Error('Coluna "client_phone" não encontrada na planilha.'));
               return;
@@ -172,10 +151,10 @@ export default function Home() {
     });
   };
 
+  // handleFileRead mantido (para upload opcional)
   const handleFileRead = async (file: File | null) => {
-    // ... (função handleFileRead existente - sem alterações) ...
-     setSelectedFile(file);
-    setParsedData([]);
+    setSelectedFile(file);
+    setParsedData([]); // Limpa dados anteriores ao selecionar novo arquivo
     if (file) {
       setIsReadingFile(true);
       try {
@@ -183,18 +162,31 @@ export default function Home() {
         if (data.length === 0) {
             toast.warning("Planilha lida", { description: "Nenhum contato com telefone válido encontrado."});
         }
-        setParsedData(data);
+        setParsedData(data); // Armazena dados lidos para feedback
+        toast.info("Planilha Carregada", { description: `${data.length} contatos válidos encontrados na planilha.` });
       } catch (error: any) {
         toast.error("Erro ao Ler Planilha", { description: error.message });
-        setSelectedFile(null);
+        setSelectedFile(null); // Limpa seleção em caso de erro
       } finally {
         setIsReadingFile(false);
       }
     }
   };
 
-  // Função atualizada para lidar com ambos os tipos
+  // Função para limpar o arquivo selecionado (mantida)
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setParsedData([]);
+  };
+
+  // Função handleStartCampaign ATUALIZADA - Usa apenas o banco de dados
   const handleStartCampaign = async () => {
+    // Validações básicas (já feitas no handleConfirmClick, mas reforçadas)
+    if (!selectedClientType) {
+       toast.error('Erro', { description: 'Por favor, selecione um tipo de público do banco.' });
+       setShowConfirmDialog(false);
+       return;
+    }
     if (!campaignName.trim()) {
        toast.error('Erro', { description: 'Por favor, digite um nome para a campanha.' });
        setShowConfirmDialog(false);
@@ -207,58 +199,44 @@ export default function Home() {
     }
 
     let contactsToSend: ClientFromDB[] = [];
-    let sourceDescription = "";
+    let sourceDescription = `tipo de público "${selectedClientType}"`;
 
     setIsLoading(true);
     setShowConfirmDialog(false);
 
     try {
-        // Lógica para buscar contatos do banco de dados
-        if (campaignType === 'database') {
-            sourceDescription = `tipo de público "${selectedClientType}"`;
-            if (!selectedClientType) throw new Error("Selecione um tipo de público.");
-            if (!user || !user.user_metadata?.phone) throw new Error("Usuário não autenticado ou sem telefone.");
+        // --- Lógica ÚNICA: Buscar contatos do banco de dados ---
+        if (!user || !user.user_metadata?.phone) throw new Error("Usuário não autenticado ou sem telefone.");
+        const userPhoneNumeric = parseInt(String(user.user_metadata.phone).replace(/\D/g, ''), 10);
+        if (isNaN(userPhoneNumeric)) throw new Error("Telefone do usuário inválido.");
 
-            const userPhoneNumeric = parseInt(String(user.user_metadata.phone).replace(/\D/g, ''), 10);
-            if (isNaN(userPhoneNumeric)) throw new Error("Telefone do usuário inválido.");
+        const { data: dbContacts, error: dbError } = await supabase
+            .from('historico_disparos')
+            .select('client_name, client_phone')
+            .eq('user_phone', userPhoneNumeric)
+            .eq('client_type', selectedClientType);
 
-            // IMPORTANTE: Substitua 'clientes' pelo nome real da sua tabela de clientes
-            const { data: dbContacts, error: dbError } = await supabase
-                .from('historico_disparos') // <-- VERIFIQUE O NOME DA TABELA
-                .select('client_name, client_phone')
-                .eq('user_phone', userPhoneNumeric)
-                .eq('client_type', selectedClientType);
+        if (dbError) throw new Error(`Erro ao buscar contatos do banco: ${dbError.message}`);
+        if (!dbContacts || dbContacts.length === 0) throw new Error(`Nenhum contato encontrado para "${selectedClientType}" no banco.`);
 
-            if (dbError) throw new Error(`Erro ao buscar contatos do banco: ${dbError.message}`);
-            if (!dbContacts || dbContacts.length === 0) throw new Error("Nenhum contato encontrado para este tipo de público.");
+        contactsToSend = dbContacts.map(c => ({
+            client_name: c.client_name,
+            client_phone: c.client_phone
+        }));
+        // --- Fim Busca Contatos ---
 
-            contactsToSend = dbContacts.map(c => ({
-                client_name: c.client_name,
-                client_phone: c.client_phone // Mantém como número se vier assim do DB
-            }));
 
-        // Lógica para usar dados da planilha
-        } else {
-             sourceDescription = `planilha "${selectedFile?.name}"`;
-             if (!parsedData || parsedData.length === 0) throw new Error("Nenhum contato válido na planilha.");
-             // Garante que os dados da planilha tenham o formato esperado
-             contactsToSend = parsedData.map(row => ({
-                 client_name: row.client_name || null,
-                 // Converte para número se necessário, ou mantém se já for
-                 client_phone: typeof row.client_phone === 'string' ? parseInt(row.client_phone.replace(/\D/g, ''), 10) : row.client_phone
-             })).filter(contact => contact.client_phone && !isNaN(contact.client_phone)); // Filtra inválidos após conversão
-        }
-
+        // Validação final da lista (deve ter contatos do DB)
         if (contactsToSend.length === 0) {
             throw new Error(`Nenhum contato válido encontrado para ${sourceDescription}.`);
         }
 
+        // --- Envio para o Webhook (lógica inalterada) ---
         const userInfo = {
           nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
           email: user?.email || 'Email não disponível',
           telefone: user?.user_metadata?.phone || 'Telefone não disponível'
         };
-
         const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
         const payload = {
           campaignName: campaignName,
@@ -266,40 +244,32 @@ export default function Home() {
           contacts: contactsToSend,
           senderInfo: userInfo
         };
-
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-
-        if (!response.ok) {
+         if (!response.ok) {
             let errorBody = `Erro ${response.status} ao enviar para o webhook.`;
-            try {
-                const errorData = await response.json();
-                errorBody = errorData.message || JSON.stringify(errorData);
-            } catch (e) {
-                 const textError = await response.text();
-                 if(textError) errorBody = textError;
-            }
+            try { const errorData = await response.json(); errorBody = errorData.message || JSON.stringify(errorData); }
+            catch (e) { const textError = await response.text(); if(textError) errorBody = textError; }
             throw new Error(errorBody);
         }
-
         const responseData = await response.json();
         console.log('Resposta do Webhook n8n:', responseData);
+        // --- Fim Envio Webhook ---
 
         toast.success('Sucesso!', {
             description: `Sua campanha "${campaignName}" foi enviada para processamento com ${contactsToSend.length} contato(s).`,
         });
 
-        // Limpar campos
-        setSelectedFile(null);
+        // Limpar campos após sucesso
+        setSelectedFile(null); // Limpa arquivo opcional
+        setParsedData([]); // Limpa dados do arquivo opcional
         setCampaignName('');
         setMessage('');
-        setParsedData([]);
-        setSelectedClientType('');
-        setDbContactsCount(null);
-        setCampaignType('upload'); // Resetar para o padrão
+        setSelectedClientType(''); // Limpa seleção obrigatória do DB
+        // Não precisa limpar dbContactsCountMap, ele é atualizado pelos useEffects
 
     } catch (error: any) {
         console.error('Falha ao enviar campanha:', error);
@@ -311,8 +281,26 @@ export default function Home() {
     }
   };
 
-  // Função atualizada para validar antes de abrir o modal
+  // Função handleConfirmClick ATUALIZADA - Valida seleção do DB como obrigatória
   const handleConfirmClick = () => {
+    // 1. Validar seleção de público do BANCO (OBRIGATÓRIO)
+    if (!selectedClientType) {
+        toast.error('Erro', { description: 'Por favor, selecione um tipo de público do banco.' });
+        return;
+    }
+
+    // 2. Validar se o público selecionado do BANCO tem contatos
+    const countForType = dbContactsCountMap[selectedClientType];
+     if (isCountingContacts) {
+         toast.warning('Aguarde', { description: 'Contando contatos do banco, aguarde...' });
+         return;
+     }
+    if (countForType === null || countForType === 0) {
+        toast.error('Erro', { description: `Nenhum contato encontrado no banco para o tipo "${selectedClientType}".` });
+        return;
+    }
+
+    // 3. Validar nome da campanha e mensagem (OBRIGATÓRIOS)
     if (!campaignName.trim()) {
         toast.error('Erro', { description: 'Por favor, digite um nome para a campanha.' });
         return;
@@ -322,41 +310,28 @@ export default function Home() {
       return;
     }
 
-    if (campaignType === 'upload') {
-        if (!selectedFile) {
-            toast.error('Erro', { description: 'Por favor, selecione um arquivo.' });
-            return;
-        }
-        if (isReadingFile) {
-            toast.warning('Aguarde', { description: 'Aguarde a leitura do arquivo terminar.' });
-            return;
-        }
-        if (parsedData.length === 0) {
-            toast.error('Erro', { description: 'Nenhum contato válido encontrado no arquivo selecionado.' });
-            return;
-        }
-    } else { // campaignType === 'database'
-        if (!selectedClientType) {
-             toast.error('Erro', { description: 'Por favor, selecione um tipo de público.' });
-             return;
-        }
-         if (isCountingContacts) {
-            toast.warning('Aguarde', { description: 'Contando contatos, aguarde...' });
-            return;
-        }
-         if (dbContactsCount === 0 || dbContactsCount === null) {
-             toast.error('Erro', { description: 'Nenhum contato encontrado para o tipo de público selecionado.' });
-             return;
-        }
+     // 4. (Opcional) Validar se o arquivo está sendo lido (caso tenha sido selecionado)
+     // Não impede o envio, apenas informa o usuário
+    if (selectedFile && isReadingFile) {
+        toast.warning('Aguarde Leitura', { description: 'A leitura do arquivo opcional ainda está em andamento.' });
+        // Não retorna, pois o envio será pelo DB de qualquer forma
     }
 
-    setShowConfirmDialog(true);
+
+    setShowConfirmDialog(true); // Abre o modal se tudo estiver OK
   };
 
-   // Define a contagem e a descrição da fonte para o modal
-  const confirmationCount = campaignType === 'upload' ? parsedData.length : (dbContactsCount ?? 0);
-  const confirmationSource = campaignType === 'upload' ? `planilha ${selectedFile?.name}` : `tipo de público "${selectedClientType}"`;
-
+  // Define a contagem e a descrição da fonte para o modal (sempre do DB)
+  const getConfirmationDetails = () => {
+     if (selectedClientType) {
+         return {
+             count: dbContactsCountMap[selectedClientType] ?? 0,
+             source: `tipo de público "${selectedClientType}" do banco` // Descrição fixa
+         };
+     }
+     return { count: 0, source: 'origem desconhecida' }; // Fallback
+  };
+  const { count: confirmationCount, source: confirmationSource } = getConfirmationDetails();
 
   return (
     <ProtectedRoute>
@@ -364,144 +339,143 @@ export default function Home() {
         <div className="max-w-4xl mx-auto space-y-6">
           <h1 className="text-3xl font-bold">Nova Campanha de Disparo</h1>
 
-          {/* Seletor de Tipo de Campanha */}
-          <div className="space-y-2">
-             <Label>Origem dos Contatos</Label>
-             <RadioGroup defaultValue="upload" value={campaignType} onValueChange={(value) => setCampaignType(value as 'upload' | 'database')} className="flex space-x-4">
-               <div className="flex items-center space-x-2">
-                 <RadioGroupItem value="upload" id="r-upload" />
-                 <Label htmlFor="r-upload" className="flex items-center gap-2 cursor-pointer">
-                    <Upload className="h-4 w-4 text-muted-foreground" /> Importar Planilha (.csv)
-                 </Label>
-               </div>
-               <div className="flex items-center space-x-2">
-                 <RadioGroupItem value="database" id="r-database" />
-                 <Label htmlFor="r-database" className="flex items-center gap-2 cursor-pointer">
-                    <Database className="h-4 w-4 text-muted-foreground" /> Selecionar do Banco
-                 </Label>
-               </div>
-             </RadioGroup>
-           </div>
+          {/* Etapa 1: Upload de Arquivo (Opcional) */}
+          <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                   <span>1. Carregar Lista (Etapa Opcional)</span>
+                    {selectedFile && (
+                        <Button variant="ghost" size="sm" onClick={clearSelectedFile} className="text-destructive hover:text-destructive/80">
+                            <Trash2 className="h-4 w-4 mr-1"/> Remover Arquivo
+                        </Button>
+                     )}
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                 <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
+                 <div className="flex justify-center pt-4">
+                     <Link
+                         href="/planilha-modelo.csv"
+                         download
+                         className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}
+                     >
+                         <Download className="h-4 w-4" />
+                         Baixar Modelo CSV
+                     </Link>
+                 </div>
+                 {isReadingFile && <p className="text-sm text-center text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
+                 {selectedFile && !isReadingFile && parsedData.length > 0 && (
+                     <p className="text-sm text-center text-green-600 mt-2">{parsedData.length} contatos válidos encontrados na planilha.</p>
+                 )}
+                 {selectedFile && !isReadingFile && parsedData.length === 0 && (
+                    <p className="text-sm text-center text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
+                 )}
+                 <p className="text-xs text-center text-muted-foreground mt-4">
+                    O público para envio será selecionado do banco de dados na próxima etapa.
+                 </p>
+            </CardContent>
+          </Card>
 
+         {/* Etapa 2: Selecionar Público do Banco (Obrigatório) */}
+          <Card>
+              <CardHeader>
+                  <CardTitle>2. Escolher Público</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                 <Label htmlFor="client-type-select">Público da Campanha</Label>
+                 <Select
+                    value={selectedClientType}
+                    onValueChange={setSelectedClientType}
+                    disabled={isLoadingClientTypes || clientTypes.length === 0}
+                 >
+                     <SelectTrigger id="client-type-select">
+                       <SelectValue placeholder={
+                           isLoadingClientTypes || isCountingContacts ? "Carregando..." :
+                           (clientTypes.length === 0) ? "Nenhum tipo de público encontrado" :
+                           "Selecione o tipo de público alvo"
+                       } />
+                     </SelectTrigger>
+                     <SelectContent>
+                       {/* Remove a opção 'uploaded_list' */}
+                       {!isLoadingClientTypes && clientTypes.map((type) => {
+                         const count = dbContactsCountMap[type];
+                         const countText = isCountingContacts ? '(contando...)' :
+                                           count !== null ? `(${count} contato${count !== 1 ? 's' : ''})` : '(erro ao contar)';
+                         return (
+                           <SelectItem key={type} value={type} disabled={count === 0 || count === null}>
+                              {type} {countText}
+                           </SelectItem>
+                         );
+                       })}
+                     </SelectContent>
+                   </Select>
+                    {isCountingContacts && <p className="text-xs text-muted-foreground animate-pulse">Atualizando contagem de contatos...</p>}
+                    {clientTypes.length === 0 && !isLoadingClientTypes && <p className="text-xs text-muted-foreground mt-2">Nenhum tipo de público cadastrado para seu usuário no banco de dados.</p>}
+             </CardContent>
+           </Card>
 
-          {/* Seção Planilha (Condicional) */}
-          {campaignType === 'upload' && (
-            <div className="space-y-2 animate-in fade-in duration-300">
-                <Label>Planilha de Contatos (.csv)</Label>
-                <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
-                <div className="flex justify-center pt-2">
-                <Link
-                    href="/planilha-modelo.csv"
-                    download
-                    className={cn(
-                    buttonVariants({ variant: "outline", size: "sm" }),
-                    "gap-2"
-                    )}
-                >
-                    <Download className="h-4 w-4" />
-                    Baixar Modelo CSV
-                </Link>
-                </div>
-                {isReadingFile && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
-                {parsedData.length > 0 && !isReadingFile && (
-                    <p className="text-sm text-green-600 mt-2">{parsedData.length} contatos válidos carregados.</p>
-                )}
-                {selectedFile && parsedData.length === 0 && !isReadingFile && (
-                    <p className="text-sm text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
-                )}
-            </div>
-          )}
-
-          {/* Seção Selecionar do Banco (Condicional) */}
-           {campaignType === 'database' && (
-             <div className="space-y-2 animate-in fade-in duration-300">
-               <Label htmlFor="client-type-select">Selecionar Tipo de Público</Label>
-               <Select
-                 value={selectedClientType}
-                 onValueChange={setSelectedClientType}
-                 disabled={isLoadingClientTypes || clientTypes.length === 0}
-               >
-                 <SelectTrigger id="client-type-select">
-                   <SelectValue placeholder={isLoadingClientTypes ? "Carregando tipos..." : (clientTypes.length === 0 ? "Nenhum tipo encontrado" : "Selecione o tipo de público")} />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {clientTypes.map((type) => (
-                     <SelectItem key={type} value={type}>{type}</SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
-               {isCountingContacts && <p className="text-sm text-muted-foreground mt-2 animate-pulse">Contando contatos...</p>}
-               {dbContactsCount !== null && !isCountingContacts && (
-                    <p className={`text-sm mt-2 ${dbContactsCount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {dbContactsCount} contato(s) encontrado(s) para este tipo.
+          {/* Etapa 3 e 4: Nome da Campanha e Mensagem (Obrigatórios) */}
+           <Card>
+               <CardHeader>
+                   <CardTitle>3. Detalhes da Campanha</CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-4">
+                  {/* Nome da Campanha */}
+                  <div className="space-y-2">
+                    <Label htmlFor="campaignName">Nome da Campanha</Label>
+                    <Input
+                      id="campaignName"
+                      placeholder="Ex: Promoção Dia dos Pais"
+                      value={campaignName}
+                      onChange={(e) => setCampaignName(e.target.value)}
+                      maxLength={100}
+                    />
+                     <p className="text-xs text-muted-foreground">
+                        Este nome ajudará a identificar a campanha nos relatórios.
                     </p>
-                )}
-               {clientTypes.length === 0 && !isLoadingClientTypes && <p className="text-xs text-muted-foreground mt-2">Nenhum tipo de público cadastrado para seu usuário no banco de dados.</p>}
-             </div>
-           )}
+                  </div>
 
-          {/* Nome da Campanha */}
-          <div className="space-y-2">
-            <Label htmlFor="campaignName">Nome da Campanha</Label>
-            <Input
-              id="campaignName"
-              placeholder="Ex: Promoção Dia dos Pais"
-              value={campaignName}
-              onChange={(e) => setCampaignName(e.target.value)}
-              maxLength={100}
-            />
-             <p className="text-xs text-muted-foreground">
-                Este nome ajudará a identificar a campanha nos relatórios.
-            </p>
-          </div>
+                  {/* Mensagem */}
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Mensagem</Label>
+                    <div className="flex gap-2 mb-2 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => insertVariable('{{client_name}}')}
+                      >
+                        Inserir {'{{client_name}}'}
+                      </Button>
+                      {/* Adicionar mais variáveis se necessário */}
+                    </div>
+                    <Textarea
+                      id="message"
+                      placeholder="Digite sua mensagem aqui... Use {{client_name}} para o nome do cliente."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      rows={8}
+                      className="resize-none"
+                    />
+                     <p className="text-xs text-muted-foreground">
+                       Variável disponível: {'{{client_name}}'}
+                     </p>
+                  </div>
+              </CardContent>
+           </Card>
 
-          {/* Mensagem */}
-          <div className="space-y-2">
-            <Label htmlFor="message">Mensagem</Label>
-            <div className="flex gap-2 mb-2 flex-wrap">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => insertVariable('{{client_name}}')}
-              >
-                Inserir {'{{client_name}}'}
-              </Button>
-              {/* Se você tiver mais variáveis da tabela clientes, adicione botões aqui */}
-               {/* Exemplo:
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => insertVariable('{{outra_coluna}}')}
-                disabled={campaignType === 'upload'} // Desabilitar se for upload e a coluna não existir no CSV
-              >
-                Inserir {'{{outra_coluna}}'}
-              </Button>
-              */}
-            </div>
-            <Textarea
-              id="message"
-              placeholder="Digite sua mensagem aqui... Use {{client_name}} para o nome do cliente."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={8}
-              className="resize-none"
-            />
-             <p className="text-xs text-muted-foreground">
-               Variável disponível: {'{{client_name}}'}
-             </p>
-          </div>
 
+          {/* Botão de Disparo */}
           <Button
             onClick={handleConfirmClick}
             size="lg"
             className="w-full"
-            disabled={isReadingFile || isLoading || isLoadingClientTypes || isCountingContacts}
+            disabled={isLoading || isLoadingClientTypes || isCountingContacts} // Não depende mais de isReadingFile para habilitar
           >
             {isLoading ? 'Enviando Campanha...' : 'Disparar Campanha'}
           </Button>
 
+          {/* Modal de Confirmação (Descrição ajustada) */}
           <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>

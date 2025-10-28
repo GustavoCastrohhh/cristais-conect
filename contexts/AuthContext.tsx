@@ -8,9 +8,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
   session: Session | null;
-  login: (email: string, password: string) => Promise<{ error: Error | null }>; // Modificado para email
+  login: (email: string, password: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
-  isLoading: boolean; // Adicionado estado de carregamento
+  isLoading: boolean;
+  isAdmin: boolean; // NOVO: Adicionar flag isAdmin
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,7 +20,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Estado inicial de carregamento
-
+  const isAdmin = !!user?.user_metadata?.role && user.user_metadata.role === 'admin'; // NOVO: Calcular isAdmin
+  
   useEffect(() => {
     setIsLoading(true);
     // Tenta pegar a sessão inicial
@@ -76,11 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, session, login, logout, isLoading }}>
-      {/* Só renderiza children quando não estiver carregando a sessão inicial */}
-      {!isLoading && children}
-    </AuthContext.Provider>
-  );
+  <AuthContext.Provider value={{ isAuthenticated, user, session, login, logout, isLoading, isAdmin }}>
+    {!isLoading && children}
+  </AuthContext.Provider>
+);
 }
 
 export function useAuth() {

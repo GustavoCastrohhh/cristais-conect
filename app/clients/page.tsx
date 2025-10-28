@@ -1,4 +1,3 @@
-// Linha 1: Adiciona a diretiva "use client"
 "use client";
 
 import { useState, useEffect } from 'react';
