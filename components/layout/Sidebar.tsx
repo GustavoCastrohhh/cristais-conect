@@ -12,12 +12,12 @@ const navItems = [
     icon: Rocket,
   },
   {
-    title: 'Relatórios',
+    title: 'Relatório de Disparos',
     href: '/reports',
     icon: BarChart3,
   },
   {
-    title: 'Clientes', // Novo item
+    title: 'Meus Clientes', // Novo item
     href: '/clients', // Nova rota
     icon: Users,      // Novo ícone
   },

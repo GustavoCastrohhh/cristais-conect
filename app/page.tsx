@@ -22,9 +22,8 @@ import {
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Link from 'next/link';
-import { Download, Database, Upload, Trash2 } from 'lucide-react'; // Adicionado Trash2
+import { Download, Database, Upload, Trash2, UserPlus } from 'lucide-react'; // Adicionado UserPlus
 import { cn } from '@/lib/utils';
-// Removido RadioGroup
 import {
   Select,
   SelectContent,
@@ -40,28 +39,35 @@ interface ClientFromDB {
     client_phone: number | null;
 }
 
+// Interface para dados do CSV (usada no handleAddContacts)
+interface ClientFromCSV {
+    client_name: string | null;
+    client_phone: string | number | null; // Pode vir como string do CSV
+    // Adicionar outros campos do CSV se houver
+}
+
+
 export default function Home() {
   const { user } = useAuth();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Mantido para upload opcional
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [campaignName, setCampaignName] = useState('');
   const [message, setMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isReadingFile, setIsReadingFile] = useState(false); // Mantido para feedback do upload
-  const [parsedData, setParsedData] = useState<any[]>([]); // Mantido para feedback do upload
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const [parsedData, setParsedData] = useState<ClientFromCSV[]>([]); // Tipado com ClientFromCSV
 
-  // Estados para seleção de público do DB (agora obrigatório)
   const [clientTypes, setClientTypes] = useState<string[]>([]);
-  const [selectedClientType, setSelectedClientType] = useState<string>(''); // Este é o público selecionado
+  const [selectedClientType, setSelectedClientType] = useState<string>('');
   const [isLoadingClientTypes, setIsLoadingClientTypes] = useState(false);
   const [dbContactsCountMap, setDbContactsCountMap] = useState<Record<string, number | null>>({});
   const [isCountingContacts, setIsCountingContacts] = useState(false);
+  const [isAddingContacts, setIsAddingContacts] = useState(false); // Novo estado para loading do botão Adicionar Contatos
 
   const insertVariable = (variable: string) => {
     setMessage((prev) => prev + variable);
   };
 
-  // Buscar tipos de cliente do banco de dados (sem alterações na lógica interna)
   useEffect(() => {
     async function fetchClientTypes() {
       if (!user || !user.user_metadata?.phone) return;
@@ -84,14 +90,13 @@ export default function Home() {
       } else if (data) {
         const uniqueTypes = Array.from(new Set(data.map(item => item.client_type).filter(type => type !== null))) as string[];
         setClientTypes(uniqueTypes.sort());
-        countContactsForTypes(uniqueTypes, userPhoneNumeric); // Dispara contagem
+        countContactsForTypes(uniqueTypes, userPhoneNumeric);
       }
       setIsLoadingClientTypes(false);
     }
     fetchClientTypes();
   }, [user]);
 
-  // Função para contar contatos para múltiplos tipos (sem alterações)
   async function countContactsForTypes(types: string[], userPhoneNumeric: number) {
     if (types.length === 0 || isNaN(userPhoneNumeric)) return;
     setIsCountingContacts(true);
@@ -114,8 +119,8 @@ export default function Home() {
     setIsCountingContacts(false);
   }
 
-  // Função parseFile mantida (para upload opcional)
-  const parseFile = (file: File): Promise<any[]> => {
+  // --- Função parseFile ---
+  const parseFile = (file: File): Promise<ClientFromCSV[]> => { // Retorna ClientFromCSV[]
      return new Promise((resolve, reject) => {
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'csv') {
@@ -130,7 +135,8 @@ export default function Home() {
             console.error("Erros ao parsear CSV:", results.errors);
             reject(new Error(`Erro ao ler CSV: ${results.errors[0]?.message || 'Verifique o formato.'}`));
           } else {
-            const data = results.data as any[];
+            const data = results.data as any[]; // PapaParse retorna 'any[]'
+            // Validações de colunas
             if (!results.meta.fields?.includes('client_phone')) {
               reject(new Error('Coluna "client_phone" não encontrada na planilha.'));
               return;
@@ -139,7 +145,14 @@ export default function Home() {
                 reject(new Error('Coluna "client_name" não encontrada na planilha.'));
                 return;
             }
-            const validData = data.filter(row => row.client_phone && String(row.client_phone).trim() !== '');
+            // Filtra e mapeia para a interface ClientFromCSV
+            const validData: ClientFromCSV[] = data
+              .filter(row => row.client_phone && String(row.client_phone).trim() !== '')
+              .map(row => ({
+                  client_name: row.client_name || null,
+                  client_phone: String(row.client_phone).trim() // Garante que é string
+                  // Mapear outros campos se necessário
+              }));
             resolve(validData);
           }
         },
@@ -151,10 +164,9 @@ export default function Home() {
     });
   };
 
-  // handleFileRead mantido (para upload opcional)
   const handleFileRead = async (file: File | null) => {
     setSelectedFile(file);
-    setParsedData([]); // Limpa dados anteriores ao selecionar novo arquivo
+    setParsedData([]);
     if (file) {
       setIsReadingFile(true);
       try {
@@ -162,40 +174,89 @@ export default function Home() {
         if (data.length === 0) {
             toast.warning("Planilha lida", { description: "Nenhum contato com telefone válido encontrado."});
         }
-        setParsedData(data); // Armazena dados lidos para feedback
+        setParsedData(data);
         toast.info("Planilha Carregada", { description: `${data.length} contatos válidos encontrados na planilha.` });
       } catch (error: any) {
         toast.error("Erro ao Ler Planilha", { description: error.message });
-        setSelectedFile(null); // Limpa seleção em caso de erro
+        setSelectedFile(null);
       } finally {
         setIsReadingFile(false);
       }
     }
   };
 
-  // Função para limpar o arquivo selecionado (mantida)
   const clearSelectedFile = () => {
     setSelectedFile(null);
     setParsedData([]);
   };
 
-  // Função handleStartCampaign ATUALIZADA - Usa apenas o banco de dados
-  const handleStartCampaign = async () => {
-    // Validações básicas (já feitas no handleConfirmClick, mas reforçadas)
-    if (!selectedClientType) {
-       toast.error('Erro', { description: 'Por favor, selecione um tipo de público do banco.' });
-       setShowConfirmDialog(false);
-       return;
-    }
-    if (!campaignName.trim()) {
-       toast.error('Erro', { description: 'Por favor, digite um nome para a campanha.' });
-       setShowConfirmDialog(false);
-       return;
-    }
-    if (!message.trim()) {
-      toast.error('Erro', { description: 'A mensagem não pode estar vazia.' });
-      setShowConfirmDialog(false);
+  // --- NOVA FUNÇÃO: handleAddContacts ---
+  const handleAddContacts = async () => {
+    if (!parsedData || parsedData.length === 0) {
+      toast.error("Nenhum Contato", { description: "Carregue um arquivo CSV com contatos válidos primeiro." });
       return;
+    }
+    if (!user) {
+        toast.error("Erro", { description: "Usuário não autenticado." });
+        return;
+    }
+
+    setIsAddingContacts(true); // Inicia loading específico
+    try {
+        const userInfo = {
+          nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
+          email: user?.email || 'Email não disponível',
+          telefone: user?.user_metadata?.phone || 'Telefone não disponível'
+        };
+
+        const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta'; // Mesma URL
+        const payload = {
+          action: "novos contatos", // Identificador
+          contacts: parsedData,     // Dados parseados do CSV
+          senderInfo: userInfo
+        };
+
+        console.log("Enviando payload para 'novos contatos':", payload);
+
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+         if (!response.ok) {
+            let errorBody = `Erro ${response.status} ao adicionar contatos via webhook.`;
+            try { const errorData = await response.json(); errorBody = errorData.message || JSON.stringify(errorData); }
+            catch (e) { const textError = await response.text(); if(textError) errorBody = textError; }
+            throw new Error(errorBody);
+        }
+
+        const responseData = await response.json();
+        console.log('Resposta do Webhook n8n (novos contatos):', responseData);
+
+        toast.success('Contatos Enviados!', {
+            description: `${parsedData.length} contato(s) da planilha foram enviados para adição/atualização.`,
+        });
+
+        // Opcional: Limpar o arquivo após adicionar com sucesso?
+        // clearSelectedFile();
+
+    } catch (error: any) {
+        console.error('Falha ao adicionar contatos:', error);
+        toast.error('Falha ao Adicionar', {
+            description: error.message || 'Ocorreu um erro inesperado ao enviar os contatos.',
+        });
+    } finally {
+        setIsAddingContacts(false); // Finaliza loading específico
+    }
+  };
+  // --- FIM handleAddContacts ---
+
+  const handleStartCampaign = async () => {
+    if (!selectedClientType || !campaignName.trim() || !message.trim()) {
+       // A validação já ocorreu, mas é uma segurança extra
+       setShowConfirmDialog(false);
+       return;
     }
 
     let contactsToSend: ClientFromDB[] = [];
@@ -205,7 +266,6 @@ export default function Home() {
     setShowConfirmDialog(false);
 
     try {
-        // --- Lógica ÚNICA: Buscar contatos do banco de dados ---
         if (!user || !user.user_metadata?.phone) throw new Error("Usuário não autenticado ou sem telefone.");
         const userPhoneNumeric = parseInt(String(user.user_metadata.phone).replace(/\D/g, ''), 10);
         if (isNaN(userPhoneNumeric)) throw new Error("Telefone do usuário inválido.");
@@ -223,15 +283,11 @@ export default function Home() {
             client_name: c.client_name,
             client_phone: c.client_phone
         }));
-        // --- Fim Busca Contatos ---
 
-
-        // Validação final da lista (deve ter contatos do DB)
         if (contactsToSend.length === 0) {
             throw new Error(`Nenhum contato válido encontrado para ${sourceDescription}.`);
         }
 
-        // --- Envio para o Webhook (lógica inalterada) ---
         const userInfo = {
           nome: user?.user_metadata?.full_name || user?.email || 'Usuário Desconhecido',
           email: user?.email || 'Email não disponível',
@@ -239,11 +295,15 @@ export default function Home() {
         };
         const webhookUrl = 'https://n8nwebhook.cristaisdegramado.com.br/webhook/cristais_conecta';
         const payload = {
+          action: "disparar campanha", // <-- IDENTIFICADOR ADICIONADO
           campaignName: campaignName,
           message: message,
           contacts: contactsToSend,
           senderInfo: userInfo
         };
+
+        console.log("Enviando payload para 'disparar campanha':", payload); // Log para depuração
+
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -256,20 +316,17 @@ export default function Home() {
             throw new Error(errorBody);
         }
         const responseData = await response.json();
-        console.log('Resposta do Webhook n8n:', responseData);
-        // --- Fim Envio Webhook ---
+        console.log('Resposta do Webhook n8n (disparar campanha):', responseData);
 
         toast.success('Sucesso!', {
             description: `Sua campanha "${campaignName}" foi enviada para processamento com ${contactsToSend.length} contato(s).`,
         });
 
-        // Limpar campos após sucesso
-        setSelectedFile(null); // Limpa arquivo opcional
-        setParsedData([]); // Limpa dados do arquivo opcional
+        setSelectedFile(null);
+        setParsedData([]);
         setCampaignName('');
         setMessage('');
-        setSelectedClientType(''); // Limpa seleção obrigatória do DB
-        // Não precisa limpar dbContactsCountMap, ele é atualizado pelos useEffects
+        setSelectedClientType('');
 
     } catch (error: any) {
         console.error('Falha ao enviar campanha:', error);
@@ -281,15 +338,11 @@ export default function Home() {
     }
   };
 
-  // Função handleConfirmClick ATUALIZADA - Valida seleção do DB como obrigatória
   const handleConfirmClick = () => {
-    // 1. Validar seleção de público do BANCO (OBRIGATÓRIO)
     if (!selectedClientType) {
         toast.error('Erro', { description: 'Por favor, selecione um tipo de público do banco.' });
         return;
     }
-
-    // 2. Validar se o público selecionado do BANCO tem contatos
     const countForType = dbContactsCountMap[selectedClientType];
      if (isCountingContacts) {
          toast.warning('Aguarde', { description: 'Contando contatos do banco, aguarde...' });
@@ -299,8 +352,6 @@ export default function Home() {
         toast.error('Erro', { description: `Nenhum contato encontrado no banco para o tipo "${selectedClientType}".` });
         return;
     }
-
-    // 3. Validar nome da campanha e mensagem (OBRIGATÓRIOS)
     if (!campaignName.trim()) {
         toast.error('Erro', { description: 'Por favor, digite um nome para a campanha.' });
         return;
@@ -309,27 +360,20 @@ export default function Home() {
       toast.error('Erro', { description: 'Por favor, digite uma mensagem.' });
       return;
     }
-
-     // 4. (Opcional) Validar se o arquivo está sendo lido (caso tenha sido selecionado)
-     // Não impede o envio, apenas informa o usuário
     if (selectedFile && isReadingFile) {
         toast.warning('Aguarde Leitura', { description: 'A leitura do arquivo opcional ainda está em andamento.' });
-        // Não retorna, pois o envio será pelo DB de qualquer forma
     }
-
-
-    setShowConfirmDialog(true); // Abre o modal se tudo estiver OK
+    setShowConfirmDialog(true);
   };
 
-  // Define a contagem e a descrição da fonte para o modal (sempre do DB)
   const getConfirmationDetails = () => {
      if (selectedClientType) {
          return {
              count: dbContactsCountMap[selectedClientType] ?? 0,
-             source: `tipo de público "${selectedClientType}" do banco` // Descrição fixa
+             source: `tipo de público "${selectedClientType}" do banco`
          };
      }
-     return { count: 0, source: 'origem desconhecida' }; // Fallback
+     return { count: 0, source: 'origem desconhecida' };
   };
   const { count: confirmationCount, source: confirmationSource } = getConfirmationDetails();
 
@@ -343,7 +387,7 @@ export default function Home() {
           <Card>
             <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                   <span>1. Carregar Lista (Etapa Opcional)</span>
+                   <span>1. Carregar Lista (Opcional - Apenas para Adicionar Contatos)</span>
                     {selectedFile && (
                         <Button variant="ghost" size="sm" onClick={clearSelectedFile} className="text-destructive hover:text-destructive/80">
                             <Trash2 className="h-4 w-4 mr-1"/> Remover Arquivo
@@ -353,16 +397,40 @@ export default function Home() {
             </CardHeader>
             <CardContent>
                  <FileUpload onFileSelect={handleFileRead} selectedFile={selectedFile} />
-                 <div className="flex justify-center pt-4">
+                 <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-4"> {/* Flex container */}
                      <Link
                          href="/planilha-modelo.csv"
                          download
-                         className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}
+                         className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2 w-full sm:w-auto")} // Ajuste de largura
                      >
                          <Download className="h-4 w-4" />
                          Baixar Modelo CSV
                      </Link>
+                     {/* NOVO BOTÃO ADICIONAR CONTATOS */}
+                     <Button
+                        onClick={handleAddContacts}
+                        variant="default"
+                        size="sm"
+                        disabled={!selectedFile || parsedData.length === 0 || isReadingFile || isAddingContacts} // Desabilita se não houver arquivo/dados ou se estiver carregando
+                        className="gap-2 w-full sm:w-auto" // Ajuste de largura
+                    >
+                        {isAddingContacts ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Adicionando...
+                            </>
+                        ) : (
+                             <>
+                                <UserPlus className="h-4 w-4" />
+                                Adicionar Contatos ao Banco
+                             </>
+                         )}
+                     </Button>
                  </div>
+                 {/* Feedback continua o mesmo */}
                  {isReadingFile && <p className="text-sm text-center text-muted-foreground mt-2 animate-pulse">Lendo arquivo...</p>}
                  {selectedFile && !isReadingFile && parsedData.length > 0 && (
                      <p className="text-sm text-center text-green-600 mt-2">{parsedData.length} contatos válidos encontrados na planilha.</p>
@@ -371,7 +439,9 @@ export default function Home() {
                     <p className="text-sm text-center text-red-600 mt-2">Nenhum contato com telefone válido encontrado no arquivo.</p>
                  )}
                  <p className="text-xs text-center text-muted-foreground mt-4">
-                    O público para envio será selecionado do banco de dados na próxima etapa.
+                    Use o botão "Adicionar Contatos" para incluir/atualizar os contatos da planilha no banco.
+                    <br/>
+                    O público para o disparo da campanha será selecionado na próxima etapa.
                  </p>
             </CardContent>
           </Card>
@@ -379,7 +449,7 @@ export default function Home() {
          {/* Etapa 2: Selecionar Público do Banco (Obrigatório) */}
           <Card>
               <CardHeader>
-                  <CardTitle>2. Escolher Público</CardTitle>
+                  <CardTitle>2. Escolher Público para Disparo</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                  <Label htmlFor="client-type-select">Público da Campanha</Label>
@@ -396,7 +466,6 @@ export default function Home() {
                        } />
                      </SelectTrigger>
                      <SelectContent>
-                       {/* Remove a opção 'uploaded_list' */}
                        {!isLoadingClientTypes && clientTypes.map((type) => {
                          const count = dbContactsCountMap[type];
                          const countText = isCountingContacts ? '(contando...)' :
@@ -470,12 +539,12 @@ export default function Home() {
             onClick={handleConfirmClick}
             size="lg"
             className="w-full"
-            disabled={isLoading || isLoadingClientTypes || isCountingContacts} // Não depende mais de isReadingFile para habilitar
+            disabled={isLoading || isLoadingClientTypes || isCountingContacts || isAddingContacts} // Desabilita também se estiver adicionando contatos
           >
             {isLoading ? 'Enviando Campanha...' : 'Disparar Campanha'}
           </Button>
 
-          {/* Modal de Confirmação (Descrição ajustada) */}
+          {/* Modal de Confirmação */}
           <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>
