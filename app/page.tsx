@@ -409,7 +409,7 @@ export default function Home() {
                      {/* NOVO BOTÃO ADICIONAR CONTATOS */}
                      <Button
                         onClick={handleAddContacts}
-                        variant="secondary"
+                        variant="default"
                         size="sm"
                         disabled={!selectedFile || parsedData.length === 0 || isReadingFile || isAddingContacts} // Desabilita se não houver arquivo/dados ou se estiver carregando
                         className="gap-2 w-full sm:w-auto" // Ajuste de largura
