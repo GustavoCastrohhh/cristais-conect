@@ -23,6 +23,7 @@ interface Conversation {
 
 interface Message {
   id: string;
+  conversation_id: string; // <-- ADICIONE ESTA LINHA
   direction: 'in' | 'out';
   message_body: string;
   created_at: string;
