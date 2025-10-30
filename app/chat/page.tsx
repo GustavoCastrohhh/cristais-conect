@@ -43,26 +43,31 @@ export default function ChatPage() {
   const selectedConversation = conversations.find(c => c.id === selectedConversationId);
 
   // 1. Buscar conversas iniciais
-  useEffect(() => {
-    if (!user) return;
+      useEffect(() => {
+        async function fetchConversations() {
+          // A guarda DEVE estar DENTRO da função async
+          if (!user) {
+            setIsLoadingConversations(false); // Garante que o loading pare
+            return; 
+          }
 
-    async function fetchConversations() {
-      setIsLoadingConversations(true);
-      const { data, error } = await supabase
-        .from('chat_conversations')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('last_message_timestamp', { ascending: false });
+          setIsLoadingConversations(true);
+          const { data, error } = await supabase
+            .from('chat_conversations')
+            .select('*')
+            .eq('user_id', user.id) // <-- Agora seguro
+            .order('last_message_timestamp', { ascending: false });
 
-      if (error) {
-        console.error('Erro ao buscar conversas:', error);
-      } else {
-        setConversations(data as Conversation[]);
-      }
-      setIsLoadingConversations(false);
-    }
-    fetchConversations();
-  }, [user]);
+          if (error) {
+            console.error('Erro ao buscar conversas:', error);
+          } else {
+            setConversations(data as Conversation[]);
+          }
+          setIsLoadingConversations(false);
+        }
+
+        fetchConversations();
+      }, [user]);
 
   // 2. Buscar mensagens ao selecionar uma conversa
   useEffect(() => {
