@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Rocket, BarChart3, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { MessageSquare } from 'lucide-react'; // Adicionar MessageSquare
 
 const navItems = [
   {
@@ -17,9 +18,14 @@ const navItems = [
     icon: BarChart3,
   },
   {
-    title: 'Meus Clientes', // Novo item
-    href: '/clients', // Nova rota
-    icon: Users,      // Novo ícone
+    title: 'Meus Clientes',
+    href: '/clients',
+    icon: Users,
+  },
+  {
+    title: 'Chat', 
+    href: '/chat',
+    icon: MessageSquare,
   },
 ];
 
