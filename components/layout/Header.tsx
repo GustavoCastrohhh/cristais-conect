@@ -22,7 +22,7 @@ export function Header() {
         <div className="flex-1" />
         <div className="flex items-center justify-center">
           <Image
-            src="https://udblxrmkivxksgflmkni.supabase.co/storage/v1/object/public/logos/logo_cg_escrita_abaixo.png"
+            src={process.env.NEXT_PUBLIC_LOGO_URL!}
             alt="Logo"
             width={60}
             height={40}

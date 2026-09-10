@@ -41,7 +41,7 @@ export default function LoginPage() {
       {/* Adicione a Logo aqui */}
       <div className="mb-8"> {/* Adiciona margem inferior */}
         <Image
-          src="https://udblxrmkivxksgflmkni.supabase.co/storage/v1/object/public/logos/logo_cg_escrita_abaixo.png" // Mesma URL da logo
+          src={process.env.NEXT_PUBLIC_LOGO_URL!}
           alt="Logo Cristais de Gramado Conecta"
           width={200} // Tamanho maior - Largura
           height={66} // Tamanho maior - Altura (mantendo proporção aprox. de 120/40)
